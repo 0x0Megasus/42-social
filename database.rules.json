@@ -1,0 +1,11 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": { ".indexOn": ["createdAt"] },
+    "posts": { ".indexOn": ["createdAt", "authorId"] },
+    "comments": { ".indexOn": ["createdAt", "postId"] },
+    "messages": { ".indexOn": ["createdAt", "convoId"] },
+    "notifications": { ".indexOn": ["createdAt", "userId"] }
+  }
+}

@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Calm minimal base — skill: frontend-design-systems (restraint, spacing rhythm) */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgb(6 182 212 / 0.25);
+}
+
+@layer base {
+  /* pointer cursor on everything clickable (Tailwind v4 doesn't do this by default) */
+  a,
+  button:not(:disabled),
+  [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  /* visible keyboard focus everywhere */
+  :focus-visible {
+    outline: 2px solid rgb(6 182 212 / 0.7);
+    outline-offset: 2px;
+  }
+}
