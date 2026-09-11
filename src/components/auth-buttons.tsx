@@ -94,11 +94,28 @@ export function AuthButtons() {
           : "/";
       window.location.href = redirect;
     } catch (e) {
-      setError(
-        e instanceof Error && e.message.includes("Firebase")
-          ? "Add Firebase keys to .env.local first."
-          : "Google sign-in failed. Try 42 instead."
-      );
+      // Only blame missing keys when the server actually lacks them —
+      // Firebase SDK errors ("Firebase: Error (auth/…)") mean something else.
+      if (!config?.google) {
+        setError("Google login isn't set up on this server yet.");
+      } else if (
+        e instanceof Error &&
+        e.message.includes("auth/popup-closed-by-user")
+      ) {
+        setError("Popup closed — try again.");
+      } else if (
+        e instanceof Error &&
+        e.message.includes("auth/cancelled-popup-request")
+      ) {
+        setError("Already signing in — finish the open popup.");
+      } else if (
+        e instanceof Error &&
+        e.message.includes("auth/operation-not-allowed")
+      ) {
+        setError("Google provider is off in Firebase Console — enable it.");
+      } else {
+        setError("Google sign-in failed. Try again.");
+      }
       setBusy(null);
     }
   }

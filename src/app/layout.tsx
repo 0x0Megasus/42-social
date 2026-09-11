@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -16,6 +16,12 @@ export const metadata: Metadata = {
   title: "42·social — campus network for 42 students",
   description:
     "Minimal social network for 42 / 1337 students. Sign in with Google or 42 Intra.",
+  applicationName: "42·social",
+  appleWebApp: { capable: true, title: "42·social", statusBarStyle: "black" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090B",
 };
 
 export default function RootLayout({

@@ -38,11 +38,6 @@ export default async function Login({
         <div className="mt-6">
           <AuthButtons />
         </div>
-        <p className="mt-6 text-center text-xs leading-5 text-zinc-400">
-          Same email = same profile.
-          <br />
-          We only read public 42 data.
-        </p>
       </div>
     </section>
   );
