@@ -49,7 +49,7 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
           id="explore-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, login, campus…"
+          placeholder="Search for a student.."
           autoComplete="off"
           maxLength={60}
           className="h-11 w-full rounded-2xl border border-zinc-200 bg-white pl-10 pr-9 text-[14px] outline-none placeholder:text-zinc-400 focus:border-cyan-500 dark:border-zinc-800 dark:bg-zinc-950"

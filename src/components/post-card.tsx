@@ -722,7 +722,7 @@ export function PostCard({
                     </button>
                   )}
                   {mine && !isEditing && !c.id.startsWith("tmp-") && (
-                    <span className="ml-1 inline-flex items-center gap-0.5 align-middle">
+                    <span className="ml-1 inline-flex items-center gap-0.5 align-middle" title="Your comment">
                       {confirmDeleteCommentId === c.id ? (
                         <>
                           <button
