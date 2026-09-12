@@ -94,7 +94,7 @@ export default async function Profile({
           </span>
         </div>
         {pub.bio && (
-          <p className="mx-auto mt-3 max-w-sm text-[14px] leading-6">{pub.bio}</p>
+          <p className="mx-auto mt-3 max-w-sm break-words text-[14px] leading-6">{pub.bio}</p>
         )}
         {!isMe && session && (
           <div className="mt-4 flex items-center justify-center gap-2">

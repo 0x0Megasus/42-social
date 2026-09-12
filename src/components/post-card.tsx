@@ -556,7 +556,7 @@ export function PostCard({
           </div>
         </div>
       ) : (
-        <p className="mt-3 whitespace-pre-wrap text-[15px] leading-6">{renderRich(displayBody)}</p>
+        <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6">{renderRich(displayBody)}</p>
       )}
       <div className="mt-3 flex items-center gap-1">
         <button
@@ -651,7 +651,7 @@ export function PostCard({
                   key={c.id}
                   id={`cmt-${post.id}-${c.id}`}
                   className={cn(
-                    "group/c scroll-mt-2 rounded px-1 py-1 text-[13.5px] leading-5 hover:bg-zinc-100 dark:hover:bg-zinc-900",
+                    "scroll-mt-2 overflow-hidden rounded px-1 py-1 text-[13.5px] leading-5 break-words hover:bg-zinc-100 dark:hover:bg-zinc-900",
                     flashComment === c.id && "bg-orange-200/70 dark:bg-orange-500/15"
                   )}
                 >
