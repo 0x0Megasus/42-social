@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
-import { Footer } from "@/components/footer";
 import { PresenceHeartbeat } from "@/components/presence";
 import { Toaster } from "sonner";
 
@@ -38,10 +37,9 @@ export default function RootLayout({
         <ThemeProvider>
           <PresenceHeartbeat />
           <Navbar />
-          <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-12 pt-5">
+          <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-20 pt-5">
             {children}
           </main>
-          <Footer />
           <Toaster position="bottom-center" richColors={false} />
         </ThemeProvider>
       </body>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Bold, Italic, Code } from "lucide-react";
+import { takeGraphemes } from "@/lib/sanitize";
 
 // Wraps the current selection (or cursor) with a markdown marker.
 // Works on controlled inputs: caller owns value + setter via props below.
@@ -16,11 +17,11 @@ export function wrapSelection(
   const before = value.slice(0, s);
   const sel = value.slice(s, e);
   const after = value.slice(e);
-  const next = Array.from(
-    sel ? `${before}${marker}${sel}${marker}${after}` : `${before}${marker}${marker}${after}`
-  )
-    .slice(0, max)
-    .join("");
+  // grapheme-safe: never split surrogate pairs or ZWJ emoji in half
+  const next = takeGraphemes(
+    sel ? `${before}${marker}${sel}${marker}${after}` : `${before}${marker}${marker}${after}`,
+    max
+  );
   set(next);
   requestAnimationFrame(() => {
     if (!el) return;

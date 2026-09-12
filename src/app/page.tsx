@@ -4,6 +4,7 @@ import { readDB, userPublic } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { rankFeed } from "@/lib/feed-rank";
 import { Feed } from "@/components/feed";
+import { Footer } from "@/components/footer";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function Home({
       <Suspense>
         <Feed initial={posts} me={me} initialSort={initialSort} />
       </Suspense>
+      <Footer />
     </div>
   );
 }

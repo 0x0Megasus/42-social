@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { EmojiPicker } from "@/components/emoji-picker";
 import { FormatBar } from "@/components/format-bar";
+import { graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import type { FeedPost } from "@/components/post-card";
 
 export function Composer({
@@ -76,28 +77,29 @@ export function Composer({
         ref={areaRef}
         id="composer"
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(e) => setBody(takeGraphemes(e.target.value, 500))}
         placeholder="Share a win, a project, a question…"
         rows={2}
-        maxLength={500}
+        maxLength={1000}
         className="w-full resize-none bg-transparent text-[15px] leading-6 outline-none placeholder:text-zinc-400"
       />
       <div className="mt-2 flex items-center justify-between gap-1">
         <div className="flex min-w-0 items-center gap-1">
-          <EmojiPicker onEmoji={(e) => setBody((b) => (b + e).slice(0, 500))} />
+          <EmojiPicker onEmoji={(e) => setBody((b) => takeGraphemes(b + e, 500))} />
           <FormatBar
             targetRef={areaRef}
             value={body}
-            onChange={(v) => setBody(v.slice(0, 500))}
+            onChange={(v) => setBody(takeGraphemes(v, 500))}
             max={500}
           />
           <span className="shrink-0 text-xs tabular-nums text-zinc-400">
-            {body.length}/500
+            {graphemeLen(body)}/500
           </span>
         </div>
         <button
           type="submit"
           disabled={!body.trim() || busy}
+          suppressHydrationWarning
           className="cursor-pointer rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
         >
           {busy ? "Posting…" : "Post"}

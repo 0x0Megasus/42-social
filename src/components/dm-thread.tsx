@@ -8,6 +8,7 @@ import { EmojiPicker } from "@/components/emoji-picker";
 import { Quote } from "@/components/quote";
 import { renderRich, stripMarkup } from "@/components/rich-text";
 import { FormatBar } from "@/components/format-bar";
+import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { timeAgo } from "@/lib/format";
 import { playMessage } from "@/lib/sound";
 import type { QuotedReply } from "@/lib/db";
@@ -185,12 +186,12 @@ export function DmThread({
   }
 
   async function saveEdit(id: string) {
-    const clean = editDraft.trim().slice(0, 500);
-    if (!clean) return;
+    const text = clean(editDraft, 500);
+    if (!text) return;
     const prev = msgs.find((m) => m.id === id);
     setMsgs((m) =>
       m.map((x) =>
-        x.id === id ? { ...x, body: clean, edited: true } : x
+        x.id === id ? { ...x, body: text, edited: true } : x
       )
     );
     setEditingId(null);
@@ -198,7 +199,7 @@ export function DmThread({
       const res = await fetch(`/api/dm/${convoId}/messages/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: clean }),
+        body: JSON.stringify({ body: text }),
       });
       if (!res.ok) throw new Error();
       const d = await res.json();
@@ -477,11 +478,11 @@ export function DmThread({
         }}
         className="flex shrink-0 items-center gap-1 border-t border-zinc-200 p-2 dark:border-zinc-800"
       >
-        <EmojiPicker onEmoji={(e) => setDraft((d) => (d + e).slice(0, 500))} />
+        <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 500))} />
         <FormatBar
           targetRef={dmInputRef}
           value={draft}
-          onChange={(v) => setDraft(v.slice(0, 500))}
+          onChange={(v) => setDraft(takeGraphemes(v, 500))}
           max={500}
         />
         <label htmlFor="dm-input" className="sr-only">
@@ -491,18 +492,19 @@ export function DmThread({
           ref={dmInputRef}
           id="dm-input"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => setDraft(takeGraphemes(e.target.value, 500))}
           placeholder="Message…"
-          maxLength={500}
+          maxLength={1000}
           autoComplete="off"
           className="h-10 min-w-0 flex-1 rounded-full border border-zinc-200 bg-transparent px-4 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
         />
         <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
-          {draft.length}/500
+          {graphemeLen(draft)}/500
         </span>
         <button
           type="submit"
           disabled={!draft.trim() || busy}
+          suppressHydrationWarning
           className="h-10 rounded-full bg-zinc-900 px-5 text-[14px] font-semibold text-white disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
         >
           Send

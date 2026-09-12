@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { Quote } from "@/components/quote";
 import { renderRich, stripMarkup } from "@/components/rich-text";
+import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { StatusDot } from "@/components/presence";
 import { timeAgo } from "@/lib/format";
 import type { QuotedReply } from "@/lib/db";
@@ -203,8 +204,8 @@ export function PostCard({
   }
 
   async function postComment(text: string) {
-    const clean = text.trim();
-    if (!clean || busy) return;
+    const msg = clean(text, 300);
+    if (!msg || busy) return;
     setBusy(true);
     // optimistic line (carries the reply snapshot so the quote shows instantly)
     const replySnap: QuotedReply = replyTo
@@ -213,14 +214,14 @@ export function PostCard({
           body:
             replyTo.kind === "sticker"
               ? "Sticker"
-              : replyTo.body.slice(0, 120),
+              : clean(replyTo.body, 120),
           name: replyTo.author?.name ?? "?",
           senderId: replyTo.author?.id ?? "",
         }
       : null;
     const temp = {
       id: `tmp-${Date.now()}`,
-      body: clean,
+      body: msg,
       kind: "text" as const,
       replyTo: replySnap,
       author: { name: meName ?? "You" },
@@ -235,7 +236,7 @@ export function PostCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           postId: post.id,
-          body: clean,
+          body: msg,
           replyToId: replySnap?.id.startsWith("tmp-")
             ? undefined
             : replySnap?.id,
@@ -322,8 +323,8 @@ export function PostCard({
   const isMine = !!meId && post.author?.id === meId && !post.deleted;
 
   async function savePostEdit() {
-    const clean = postDraft.trim().slice(0, 500);
-    if (!clean || clean === post.body) {
+    const text = clean(postDraft, 500);
+    if (!text || text === displayBody) {
       setEditingPost(false);
       return;
     }
@@ -331,7 +332,7 @@ export function PostCard({
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: clean }),
+        body: JSON.stringify({ body: text }),
       });
       if (res.status === 429) {
         const d = await res.json().catch(() => ({}));
@@ -371,18 +372,18 @@ export function PostCard({
   }
 
   async function saveCommentEdit(id: string) {
-    const clean = editCommentDraft.trim().slice(0, 300);
-    if (!clean) return;
+    const text = clean(editCommentDraft, 300);
+    if (!text) return;
     const prev = comments.find((c) => c.id === id);
     setComments((cs) =>
-      cs.map((x) => (x.id === id ? { ...x, body: clean, edited: true } : x))
+      cs.map((x) => (x.id === id ? { ...x, body: text, edited: true } : x))
     );
     setEditingCommentId(null);
     try {
       const res = await fetch(`/api/comments/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: clean }),
+        body: JSON.stringify({ body: text }),
       });
       if (res.status === 429) {
         const d = await res.json().catch(() => ({}));
@@ -396,7 +397,7 @@ export function PostCard({
       const d = await res.json();
       const updated: FeedComment = {
         id: d.id ?? id,
-        body: d.body ?? clean,
+        body: d.body ?? text,
         kind: d.kind ?? "text",
         edited: !!d.edited,
         deleted: !!d.deleted,
@@ -715,13 +716,13 @@ export function PostCard({
                     <button
                       onClick={() => startReply(c)}
                       aria-label="Reply to comment"
-                      className="ml-2 text-[11px] font-semibold text-zinc-400 opacity-0 transition-opacity hover:text-[#5865F2] group-hover/c:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+                      className="ml-2 text-[11px] font-semibold text-zinc-400 transition-colors hover:text-[#5865F2]"
                     >
                       Reply
                     </button>
                   )}
                   {mine && !isEditing && !c.id.startsWith("tmp-") && (
-                    <span className="ml-1 inline-flex items-center gap-0.5 align-middle opacity-0 transition-opacity group-hover/c:opacity-100 focus-within:opacity-100 max-md:opacity-100">
+                    <span className="ml-1 inline-flex items-center gap-0.5 align-middle">
                       {confirmDeleteCommentId === c.id ? (
                         <>
                           <button
@@ -802,7 +803,7 @@ export function PostCard({
             </div>
           )}
           <form onSubmit={sendComment} className="flex items-center gap-1 pt-2">
-            <EmojiPicker onEmoji={(e) => setDraft((d) => (d + e).slice(0, 300))} />
+            <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 300))} />
             <label htmlFor={`reply-${post.id}`} className="sr-only">
               Chat a reply
             </label>
@@ -815,6 +816,9 @@ export function PostCard({
               maxLength={300}
               className="h-9 min-w-0 flex-1 rounded-full border border-zinc-200 bg-transparent px-3 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
             />
+            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
+              {graphemeLen(draft)}/300
+            </span>
             <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
               {draft.length}/300
             </span>

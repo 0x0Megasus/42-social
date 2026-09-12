@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE } from "@/lib/site";
+import { Footer } from "@/components/footer";
 
 export const metadata: Metadata = {
   title: `About — ${SITE.name}`,
@@ -79,6 +80,7 @@ export default function About() {
           </Link>
         </p>
       </section>
+      <Footer />
     </article>
   );
 }

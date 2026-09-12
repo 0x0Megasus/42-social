@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { graphemeLen } from "@/lib/sanitize";
 
 export function EditProfileForm({
   name,
@@ -86,7 +87,7 @@ export function EditProfileForm({
           className="mt-1 h-10 w-full rounded-xl border border-zinc-200 bg-transparent px-3 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
         />
         <p className="text-right text-[11px] text-zinc-400">
-          {draftName.length}/30
+          {graphemeLen(draftName)}/30
         </p>
       </div>
       <div>
@@ -103,7 +104,7 @@ export function EditProfileForm({
           className="mt-1 w-full resize-none rounded-xl border border-zinc-200 bg-transparent px-3 py-2 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
         />
         <p className="text-right text-[11px] text-zinc-400">
-          {draftBio.length}/160
+          {graphemeLen(draftBio)}/160
         </p>
       </div>
       {error && (
