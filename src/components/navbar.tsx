@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Home, Compass, Bell, LogOut, Mail } from "lucide-react";
+import { Home, Compass, Bell, LogOut, Mail, Gamepad2 } from "lucide-react";
 import { Avatar } from "@/components/post-card";
 import { cn } from "@/lib/utils";
 import { playMessage, playNotification, unlockAudio } from "@/lib/sound";
@@ -104,6 +104,7 @@ export function Navbar() {
         <div className="flex items-center gap-1">
           {link("/", "Home", Home)}
           {link("/explore", "Explore", Compass)}
+          {link("/games", "Arcade", Gamepad2)}
           <Link
             href="/dm"
             aria-label="Messages"

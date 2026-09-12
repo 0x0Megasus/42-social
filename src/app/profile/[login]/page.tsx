@@ -9,7 +9,9 @@ import { EditProfileForm } from "@/components/edit-profile";
 import { SoundSetting } from "@/components/sound-setting";
 import { LiveDot, PresenceText } from "@/components/presence";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
-import { MapPin, Users } from "lucide-react";
+import { getRecords } from "@/lib/games-store";
+import { GAME_LABEL, type GameKind } from "@/lib/games/types";
+import { MapPin, Users, Trophy } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,9 @@ export default async function Profile({
     : false;
   const isMe = session?.sub === user.id;
   const peerOnline = isOnlineAt((await beatsFor([user.id])).get(user.id));
+  const records = await getRecords(user.id);
+  const played = (Object.entries(records) as [string, { w: number; l: number; d: number }][])
+    .filter(([, r]) => r.w + r.l + r.d > 0);
 
   return (
     <div className="space-y-4">
@@ -106,6 +111,32 @@ export default async function Profile({
           </>
         )}
       </section>
+
+      {played.length > 0 && (
+        <section
+          aria-label="Game records"
+          className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <h2 className="flex items-center gap-1.5 px-1 pb-2 text-[13px] font-semibold uppercase tracking-wide text-zinc-400">
+            <Trophy size={13} /> Arcade
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {played.map(([kind, r]) => (
+              <div
+                key={kind}
+                className="rounded-xl bg-zinc-50 px-3 py-2 text-center dark:bg-zinc-900"
+              >
+                <p className="text-[13px] font-semibold">
+                  {GAME_LABEL[kind as GameKind] ?? kind}
+                </p>
+                <p className="text-xs tabular-nums text-zinc-500">
+                  {r.w}W · {r.l}L · {r.d}D
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {posts.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-[14px] text-zinc-500 dark:border-zinc-700">

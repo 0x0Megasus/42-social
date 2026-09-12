@@ -13,11 +13,16 @@ export type FeedAuthor = NonNullable<FeedPost["author"]>;
 export function Feed({
   initial,
   me,
+  initialSort = "top",
 }: {
   initial: FeedPost[];
   me: FeedAuthor | null;
+  initialSort?: "top" | "new";
 }) {
   const [posts, setPosts] = useState<FeedPost[]>(initial);
+  const [sort, setSort] = useState<"top" | "new">(initialSort);
+  const sortRef = useRef(sort);
+  sortRef.current = sort;
   const searchParams = useSearchParams();
   const router = useRouter();
   const focusId = searchParams.get("focus");
@@ -44,9 +49,10 @@ export function Feed({
     []
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (mode?: "top" | "new") => {
     try {
-      const res = await fetch("/api/posts", { cache: "no-store" });
+      const s = mode ?? sortRef.current;
+      const res = await fetch(`/api/posts?sort=${s}`, { cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json();
       if (Array.isArray(d.posts)) setPosts(d.posts);
@@ -77,9 +83,32 @@ export function Feed({
     });
   }
 
+  function switchSort(mode: "top" | "new") {
+    if (mode === sort) return;
+    setSort(mode);
+    void refresh(mode);
+  }
+
   return (
     <div className="space-y-4">
       {me && <Composer author={me} onPosted={prepend} />}
+      <div className="flex items-center gap-1 px-1" role="tablist" aria-label="Feed order">
+        {(["top", "new"] as const).map((m) => (
+          <button
+            key={m}
+            role="tab"
+            aria-selected={sort === m}
+            onClick={() => switchSort(m)}
+            className={
+              sort === m
+                ? "rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold text-white dark:bg-zinc-50 dark:text-zinc-900"
+                : "rounded-full px-3 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+            }
+          >
+            {m === "top" ? "Top" : "New"}
+          </button>
+        ))}
+      </div>
       {posts.length === 0 ? (
         <div
           role="status"

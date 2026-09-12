@@ -1,4 +1,4 @@
-import { getRtdb } from "@/lib/fbrdb";
+import { getRtdb, rtdb } from "@/lib/fbrdb";
 
 // Presence, serverless-safe: heartbeats live in RTDB (/presence/{uid} = ms),
 // NOT in process memory (serverless instances don't share memory).
@@ -11,18 +11,22 @@ const REF = "/presence";
 
 export async function touch(userId: string): Promise<number> {
   const at = Date.now();
-  await getRtdb().ref(`${REF}/${userId}`).set(at);
+  await rtdb(`presence.touch:${userId}`, () =>
+    getRtdb().ref(`${REF}/${userId}`).set(at)
+  );
   return at;
 }
 
 export async function markOffline(userId: string): Promise<void> {
-  await getRtdb().ref(`${REF}/${userId}`).remove();
+  await rtdb(`presence.off:${userId}`, () =>
+    getRtdb().ref(`${REF}/${userId}`).remove()
+  );
 }
 
 export async function beatsFor(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
-  const snap = await getRtdb().ref(REF).get();
+  const snap = await rtdb("presence.read", () => getRtdb().ref(REF).get());
   const val = (snap.val() ?? {}) as Record<string, number>;
   for (const id of ids) {
     const at = val[id];
@@ -43,7 +47,8 @@ async function prune(val: Record<string, number>): Promise<void> {
       dirty = true;
     }
   }
-  if (dirty) await getRtdb().ref("/").update(updates);
+  if (dirty)
+    await rtdb("presence.prune", () => getRtdb().ref("/").update(updates));
 }
 
 export function isOnlineAt(beat: number | null | undefined, now = Date.now()): boolean {

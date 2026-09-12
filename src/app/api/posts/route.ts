@@ -3,32 +3,45 @@ import { readDB, updateDB, uid, userPublic } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { rateLimit, isDuplicate } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
+import { rankFeed } from "@/lib/feed-rank";
 
-export async function GET() {
+export async function GET(req: Request) {
   const db = await readDB();
   const session = await getSession();
   const byId = new Map(db.users.map((u) => [u.id, u]));
-  const posts = [...db.posts]
+  const likeCount = new Map<string, number>();
+  for (const l of db.likes) likeCount.set(l.postId, (likeCount.get(l.postId) ?? 0) + 1);
+  const commentCount = new Map<string, number>();
+  for (const c of db.comments)
+    if (!c.deleted) commentCount.set(c.postId, (commentCount.get(c.postId) ?? 0) + 1);
+  const enriched = [...db.posts]
     .filter((p) => !p.deleted)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 50)
     .map((p) => {
       const author = byId.get(p.authorId);
-      const likes = db.likes.filter((l) => l.postId === p.id).length;
-      const comments = db.comments.filter(
-        (c) => c.postId === p.id && !c.deleted
-      ).length;
       return {
         ...p,
         author: author ? userPublic(author) : null,
-        likes,
-        comments,
+        likes: likeCount.get(p.id) ?? 0,
+        comments: commentCount.get(p.id) ?? 0,
         liked: session
           ? db.likes.some((l) => l.postId === p.id && l.userId === session.sub)
           : false,
       };
     });
-  return NextResponse.json({ posts });
+  const sort = new URL(req.url).searchParams.get("sort");
+  const ordered =
+    sort === "new"
+      ? enriched.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      : rankFeed(
+          enriched,
+          session?.sub ?? null,
+          session
+            ? db.follows
+                .filter((f) => f.followerId === session.sub)
+                .map((f) => f.followingId)
+            : []
+        );
+  return NextResponse.json({ posts: ordered.slice(0, 50) });
 }
 
 export async function POST(req: Request) {

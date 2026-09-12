@@ -1,4 +1,4 @@
-import { getRtdb, isRtdbConfigured } from "@/lib/fbrdb";
+import { getRtdb, isRtdbConfigured, rtdb } from "@/lib/fbrdb";
 
 // Storage engine: Firebase Realtime Database, ONLY.
 // The server refuses to boot routes without the three FIREBASE_* env vars,
@@ -149,7 +149,7 @@ function normalize(db: DB): DB {
 
 async function readFresh(): Promise<DB> {
   assertRtdb();
-  const snap = await getRtdb().ref("/").get();
+  const snap = await rtdb("root.get", () => getRtdb().ref("/").get());
   return normalize({ ...empty, ...((snap.val() ?? {}) as Partial<DB>) });
 }
 
@@ -166,17 +166,19 @@ export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
     assertRtdb();
     let captured: T | undefined;
     let ran = false;
-    const res = await getRtdb()
-      .ref("/")
-      .transaction((current: unknown) => {
-        const db = normalize({
-          ...empty,
-          ...((current ?? {}) as Partial<DB>),
-        });
-        captured = fn(db);
-        ran = true;
-        return db;
-      });
+    const res = await rtdb(`root.transaction`, () =>
+      getRtdb()
+        .ref("/")
+        .transaction((current: unknown) => {
+          const db = normalize({
+            ...empty,
+            ...((current ?? {}) as Partial<DB>),
+          });
+          captured = fn(db);
+          ran = true;
+          return db;
+        })
+    );
     if (!res.committed || !ran || captured === undefined) {
       throw new Error("rtdb transaction conflict — retry the request");
     }

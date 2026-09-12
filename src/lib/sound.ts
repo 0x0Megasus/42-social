@@ -146,3 +146,30 @@ export function playBlip(): void {
   if (!c || isMuted()) return;
   tone(c, { freq: 740, at: 0, dur: 0.09, vol: 0.08 });
 }
+
+/** Short click for placing a piece. */
+export function playMove(): void {
+  if (isMuted()) return;
+  const c = synthReady();
+  if (!c) return;
+  tone(c, { freq: 1150, at: 0, dur: 0.06, vol: 0.07, type: "triangle" });
+}
+
+/** Ascending arpeggio for winning. */
+export function playWin(): void {
+  if (isMuted()) return;
+  const c = synthReady();
+  if (!c) return;
+  tone(c, { freq: 523.25, at: 0, dur: 0.14, vol: 0.1 });
+  tone(c, { freq: 659.25, at: 0.12, dur: 0.14, vol: 0.1 });
+  tone(c, { freq: 783.99, at: 0.24, dur: 0.3, vol: 0.12 });
+}
+
+/** Descending tone for losing. */
+export function playLose(): void {
+  if (isMuted()) return;
+  const c = synthReady();
+  if (!c) return;
+  tone(c, { freq: 392, at: 0, dur: 0.18, vol: 0.1 });
+  tone(c, { freq: 261.63, at: 0.16, dur: 0.32, vol: 0.1 });
+}
