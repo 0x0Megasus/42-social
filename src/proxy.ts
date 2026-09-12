@@ -24,7 +24,7 @@ async function hasSession(req: NextRequest): Promise<boolean> {
 }
 
 // Everything requires login except /login, /api/auth/* and static assets.
-export async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   if (pathname === "/login") return NextResponse.next();
   if (await hasSession(req)) return NextResponse.next();

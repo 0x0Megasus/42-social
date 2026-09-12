@@ -165,6 +165,23 @@ export function playWin(): void {
   tone(c, { freq: 783.99, at: 0.24, dur: 0.3, vol: 0.12 });
 }
 
+/** Low wooden thud for a capture. */
+export function playCapture(): void {
+  if (isMuted()) return;
+  const c = synthReady();
+  if (!c) return;
+  tone(c, { freq: 220, freqEnd: 110, at: 0, dur: 0.12, vol: 0.14, type: "triangle" });
+}
+
+/** Sharp double-tick for check. */
+export function playCheck(): void {
+  if (isMuted()) return;
+  const c = synthReady();
+  if (!c) return;
+  tone(c, { freq: 1320, at: 0, dur: 0.07, vol: 0.08 });
+  tone(c, { freq: 1320, at: 0.11, dur: 0.1, vol: 0.08 });
+}
+
 /** Descending tone for losing. */
 export function playLose(): void {
   if (isMuted()) return;

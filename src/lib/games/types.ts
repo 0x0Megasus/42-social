@@ -1,4 +1,10 @@
-export type GameKind = "tictactoe" | "connectfour";
+export type GameKind =
+  | "tictactoe"
+  | "connectfour"
+  | "rps"
+  | "number"
+  | "twentyone"
+  | "chess";
 export type GameStatus = "waiting" | "playing" | "over";
 
 export type GameRoom = {
@@ -26,6 +32,8 @@ export type GameView = GameRoom & {
   myMark: string | null;
   yourTurn: boolean;
   opponentId: string | null;
+  // reserved for per-viewer extras (unused for current games)
+  oppAnswered: number | null;
   players: {
     host: MiniProfile | null;
     guest: MiniProfile | null;
@@ -42,4 +50,8 @@ export type MiniProfile = {
 export const GAME_LABEL: Record<GameKind, string> = {
   tictactoe: "Tic-Tac-Toe",
   connectfour: "Connect Four",
+  rps: "Rock-Paper-Scissors",
+  number: "Number Duel",
+  twentyone: "21 Duel",
+  chess: "Chess",
 };

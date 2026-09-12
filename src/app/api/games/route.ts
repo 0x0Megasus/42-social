@@ -4,7 +4,14 @@ import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import type { GameKind } from "@/lib/games/types";
 
-const KINDS: GameKind[] = ["tictactoe", "connectfour"];
+const KINDS: GameKind[] = [
+  "tictactoe",
+  "connectfour",
+  "rps",
+  "number",
+  "twentyone",
+  "chess",
+];
 
 // POST /api/games { kind } -> { room }
 export async function POST(req: Request) {

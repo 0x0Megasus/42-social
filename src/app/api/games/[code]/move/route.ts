@@ -21,10 +21,22 @@ export async function POST(
   const body = (await req.json().catch(() => ({}))) as {
     cell?: number;
     col?: number;
+    pick?: string;
+    guess?: number;
+    action?: string;
+    from?: string;
+    to?: string;
+    promotion?: string;
   };
   const { room, error } = await playMove(code.toUpperCase(), session.sub, {
     cell: typeof body.cell === "number" ? body.cell : undefined,
     col: typeof body.col === "number" ? body.col : undefined,
+    pick: typeof body.pick === "string" ? body.pick : undefined,
+    guess: typeof body.guess === "number" ? body.guess : undefined,
+    action: typeof body.action === "string" ? body.action : undefined,
+    from: typeof body.from === "string" ? body.from : undefined,
+    to: typeof body.to === "string" ? body.to : undefined,
+    promotion: typeof body.promotion === "string" ? body.promotion : undefined,
   });
   if (error)
     return NextResponse.json({ error: "illegal move" }, { status: 409 });

@@ -10,6 +10,32 @@ import {
   type TTTMark,
 } from "@/lib/games/tictactoe";
 import {
+  CHESS_STARTPOS,
+  freshChess,
+  isPromotion,
+  isSquare,
+  type ChessBoard,
+} from "@/lib/games/chess";
+import { Chess } from "chess.js";
+import {
+  freshRPS,
+  isRPSPick,
+  rpsResolve,
+  type RPSBoard,
+  type RPSPick,
+} from "@/lib/games/rps";
+import {
+  freshNumber,
+  heatFor,
+  isValidGuess,
+  type NumberBoard,
+} from "@/lib/games/number";
+import {
+  freshTwentyOne,
+  handValue,
+  type TwentyBoard,
+} from "@/lib/games/twentyone";
+import {
   freshC4,
   c4Winner,
   c4Full,
@@ -35,8 +61,31 @@ function newCode(): string {
   return s;
 }
 
-function freshBoard(kind: GameKind): TTTBoard | C4Board {
-  return kind === "tictactoe" ? freshTTT() : freshC4();
+type AnyBoard =
+  | TTTBoard
+  | C4Board
+  | RPSBoard
+  | NumberBoard
+  | TwentyBoard
+  | ChessBoard;
+
+function freshBoard(kind: GameKind, hostId = "", guestId = ""): AnyBoard {
+  switch (kind) {
+    case "tictactoe":
+      return freshTTT();
+    case "connectfour":
+      return freshC4();
+    case "rps":
+      return freshRPS();
+    case "number":
+      return freshNumber();
+    case "twentyone":
+      return hostId && guestId
+        ? freshTwentyOne(hostId, guestId)
+        : { deck: [], hands: {}, stood: {} };
+    case "chess":
+      return freshChess();
+  }
 }
 
 // Boards are stored as flat strings ("X..O....." / 42-char row-major)
@@ -55,7 +104,18 @@ function encodeBoard(kind: GameKind, board: TTTBoard | C4Board): string {
   return s;
 }
 
-function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board {
+function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board | object {
+  // Object boards (no nulls inside) pass through — per-kind defaults are
+  // restored by normalizeRoom below. TTT/C4 use string encoding (null-safe).
+  if (
+    kind === "rps" ||
+    kind === "number" ||
+    kind === "twentyone" ||
+    kind === "chess"
+  ) {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+    return {};
+  }
   const cell = (ch: unknown, marks: string[]): "X" | "O" | "R" | "Y" | null => {
     if (ch === marks[0]) return marks[0] as "X" | "R";
     if (ch === marks[1]) return marks[1] as "O" | "Y";
@@ -74,6 +134,7 @@ function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board {
       (_, i) => cell(chars[i], marks) as TTTMark | null
     );
   }
+  if (kind !== "connectfour") return {};
   const marks = ["R", "Y"];
   const grid = freshC4();
   if (typeof raw === "string" && raw.length >= 42) {
@@ -93,10 +154,36 @@ function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board {
   return grid;
 }
 
-// RTDB drops empty/nullish nodes (all-null boards, {} rematch, null winner).
-// Restore them on every read so engines never see undefined.
+// RTDB drops empty/nullish nodes. Restore per-kind defaults on every read
+// so engines never see undefined (and legacy array boards self-heal).
 function normalizeRoom(room: GameRoom): GameRoom {
   room.board = decodeBoard(room.kind, room.board);
+  if (room.kind === "rps") {
+    const b = room.board as RPSBoard;
+    b.picks ??= {};
+    b.rounds ??= [];
+    b.score ??= {};
+    b.target ??= 3;
+    for (const r of b.rounds) r.winner ??= null;
+    room.board = b;
+  } else if (room.kind === "number") {
+    const b = room.board as NumberBoard;
+    b.guesses ??= [];
+    b.tries ??= {};
+    if (typeof b.secret !== "number") b.secret = 50;
+    room.board = b;
+  } else if (room.kind === "twentyone") {
+    const b = room.board as TwentyBoard;
+    b.deck ??= [];
+    b.hands ??= {};
+    b.stood ??= {};
+    room.board = b;
+  } else if (room.kind === "chess") {
+    const b = room.board as Partial<ChessBoard> as ChessBoard;
+    if (typeof b.fen !== "string" || !b.fen) b.fen = CHESS_STARTPOS;
+    b.history ??= [];
+    room.board = b;
+  }
   room.rematch ??= {};
   room.winLine ??= null;
   room.winnerId ??= null;
@@ -104,21 +191,69 @@ function normalizeRoom(room: GameRoom): GameRoom {
   return room;
 }
 
-export function markFor(room: GameRoom, userId: string): TTTMark | C4Mark | null {
-  if (userId === room.hostId) return room.kind === "tictactoe" ? "X" : "R";
-  if (userId === room.guestId) return room.kind === "tictactoe" ? "O" : "Y";
+export function markFor(room: GameRoom, userId: string): string | null {
+  if (userId === room.hostId)
+    return room.kind === "tictactoe"
+      ? "X"
+      : room.kind === "connectfour"
+        ? "R"
+        : room.kind === "chess"
+          ? "White"
+          : "P1";
+  if (userId === room.guestId)
+    return room.kind === "tictactoe"
+      ? "O"
+      : room.kind === "connectfour"
+        ? "Y"
+        : room.kind === "chess"
+          ? "Black"
+          : "P2";
   return null;
 }
 
 function toView(room: GameRoom, meId: string): GameView {
   const mark = markFor(room, meId);
+  const seated = meId === room.hostId || meId === room.guestId;
   const opponentId =
     meId === room.hostId ? room.guestId : meId === room.guestId ? room.hostId : null;
+  const playing = room.status === "playing";
+
+  // Anti-cheat redaction: hidden state is stripped per viewer.
+  // RPS hides the opponent's pending pick, Number hides the secret,
+  // 21 hides the deck until the game ends.
+  let board: unknown = room.board;
+  let yourTurn = !!mark && playing && room.turn === meId;
+  const oppAnswered: number | null = null;
+  if (room.kind === "rps") {
+    const b = room.board as RPSBoard;
+    board =
+      playing && meId in b.picks
+        ? { ...b, picks: { [meId]: b.picks[meId] } }
+        : { ...b, picks: {} };
+    yourTurn = playing && seated && !(meId in b.picks);
+  } else if (room.kind === "number") {
+    const b = room.board as NumberBoard;
+    board = playing ? { ...b, secret: 0 } : b;
+  } else if (room.kind === "twentyone") {
+    const b = room.board as TwentyBoard;
+    board = playing ? { ...b, deck: [] } : b;
+  } else if (room.kind === "chess") {
+    // full information game — nothing hidden; turn from the position itself
+    try {
+      const g = new Chess((room.board as ChessBoard).fen);
+      const mineWhite = meId === room.hostId;
+      yourTurn = playing && seated && (g.turn() === "w") === mineWhite;
+    } catch {
+      yourTurn = false;
+    }
+  }
   return {
     ...room,
+    board,
     myMark: mark,
-    yourTurn: !!mark && room.status === "playing" && room.turn === meId,
+    yourTurn,
     opponentId,
+    oppAnswered,
     players: { host: null, guest: null },
   };
 }
@@ -164,12 +299,16 @@ export async function createRoom(
     );
     if (exists.exists()) continue;
     const now = new Date().toISOString();
+    const fresh = freshBoard(kind, hostId, "");
     const room: GameRoom = {
       id,
       kind,
       hostId,
       guestId: null,
-      board: encodeBoard(kind, freshBoard(kind)),
+      board:
+        kind === "tictactoe" || kind === "connectfour"
+          ? encodeBoard(kind, fresh as TTTBoard | C4Board)
+          : fresh,
       turn: hostId,
       starterId: hostId,
       status: "waiting",
@@ -222,6 +361,9 @@ export async function joinRoom(
       if (room.status === "waiting") {
         room.status = "playing";
         room.turn = room.starterId;
+        if (room.kind === "twentyone") {
+          room.board = freshTwentyOne(room.hostId, meId);
+        }
       }
       room.updatedAt = new Date().toISOString();
       return room;
@@ -235,7 +377,16 @@ export async function joinRoom(
   return { room: await withPlayers(toView(joined, meId)) };
 }
 
-export type MoveInput = { cell?: number; col?: number };
+export type MoveInput = {
+  cell?: number;
+  col?: number;
+  pick?: string;
+  guess?: number;
+  action?: string;
+  from?: string;
+  to?: string;
+  promotion?: string;
+};
 
 export async function playMove(
   code: string,
@@ -251,9 +402,15 @@ export async function playMove(
       const room = normalizeRoom((((current ?? existing) as GameRoom | null) ?? null) as GameRoom);
       if (!room) return;
       normalizeRoom(room);
-      if (room.status !== "playing" || room.turn !== meId) return;
+      if (room.status !== "playing") return;
+      const seated = meId === room.hostId || meId === room.guestId;
+      if (!seated) return;
+      // rps is free-play (picks don't touch the other side); everything
+      // else strictly alternates via the turn field
+      if (room.kind !== "rps" && room.turn !== meId) return;
       const mark = markFor(room, meId);
-      if (!mark) return;
+      if ((room.kind === "tictactoe" || room.kind === "connectfour") && !mark)
+        return;
       if (room.kind === "tictactoe") {
         const board = room.board as TTTBoard;
         const cell = input.cell ?? -1;
@@ -270,7 +427,7 @@ export async function playMove(
         } else {
           room.turn = room.turn === room.hostId ? (room.guestId as string) : room.hostId;
         }
-      } else {
+      } else if (room.kind === "connectfour") {
         const board = room.board as C4Board;
         const row = c4Drop(board, input.col ?? -1);
         if (row < 0) return;
@@ -286,14 +443,130 @@ export async function playMove(
         } else {
           room.turn = room.turn === room.hostId ? (room.guestId as string) : room.hostId;
         }
+      } else if (room.kind === "rps") {
+        const board = room.board as RPSBoard;
+        if (!isRPSPick(input.pick) || board.picks[meId]) return;
+        board.picks[meId] = input.pick;
+        const other = meId === room.hostId ? room.guestId : room.hostId;
+        if (other && board.picks[other]) {
+          const hp = board.picks[room.hostId];
+          const gp = room.guestId ? board.picks[room.guestId] : undefined;
+          if (!hp || !gp) return;
+          const res = rpsResolve(hp, gp);
+          const winner =
+            res === 0 ? null : res === 1 ? room.hostId : room.guestId;
+          board.rounds.push({
+            a: hp,
+            b: gp,
+            winner,
+          });
+          if (winner) board.score[winner] = (board.score[winner] ?? 0) + 1;
+          board.picks = {};
+          const target = board.target || 3;
+          const hs = board.score[room.hostId] ?? 0;
+          const gs = other ? (board.score[other] ?? 0) : 0;
+          if (hs >= target || gs >= target) {
+            room.status = "over";
+            room.winnerId = hs >= target ? room.hostId : other;
+          }
+        }
+        room.turn = other ?? meId;
+      } else if (room.kind === "number") {
+        const board = room.board as NumberBoard;
+        if (!isValidGuess(input.guess)) return;
+        const hint = heatFor(board.secret, input.guess as number);
+        board.guesses.push({ by: meId, n: input.guess as number, hint });
+        board.tries[meId] = (board.tries[meId] ?? 0) + 1;
+        if (hint === "exact") {
+          room.status = "over";
+          room.winnerId = meId;
+        } else {
+          room.turn = room.turn === room.hostId ? (room.guestId as string) : room.hostId;
+        }
+      } else if (room.kind === "twentyone") {
+        const board = room.board as TwentyBoard;
+        if (input.action !== "hit" && input.action !== "stand") return;
+        const other = meId === room.hostId ? room.guestId : room.hostId;
+        const finish = () => {
+          // both stood (or bust) — decide
+          const hv = (id: string | null) =>
+            id ? handValue(board.hands[id] ?? []) : -1;
+          const myV = hv(meId);
+          const opV = hv(other);
+          const myBust = myV > 21;
+          const opBust = opV > 21;
+          if (myBust && opBust) room.winnerId = null;
+          else if (myBust) room.winnerId = other;
+          else if (opBust) room.winnerId = meId;
+          else if (myV === opV) room.winnerId = null;
+          else room.winnerId = myV > opV ? meId : other;
+          room.status = "over";
+        };
+        if (input.action === "hit") {
+          const card = board.deck.pop();
+          if (card === undefined) return;
+          const hand = [...(board.hands[meId] ?? []), card];
+          board.hands[meId] = hand;
+          const v = handValue(hand);
+          if (v > 21) {
+            finish();
+          } else {
+            if (v === 21) board.stood[meId] = true;
+            if (other && board.stood[other]) finish();
+            else
+              room.turn =
+                room.turn === room.hostId ? (room.guestId as string) : room.hostId;
+          }
+        } else {
+          board.stood[meId] = true;
+          if (other && board.stood[other]) finish();
+          else
+            room.turn =
+              room.turn === room.hostId ? (room.guestId as string) : room.hostId;
+        }
+      } else if (room.kind === "chess") {
+        const b = room.board as ChessBoard;
+        if (!isSquare(input.from) || !isSquare(input.to)) return;
+        const meWhite = meId === room.hostId;
+        let game: Chess;
+        try {
+          game = new Chess(b.fen);
+        } catch {
+          return;
+        }
+        if ((game.turn() === "w") !== meWhite) return;
+        let san: string;
+        try {
+          const mv = game.move({
+            from: input.from,
+            to: input.to,
+            promotion: isPromotion(input.promotion) ? input.promotion : "q",
+          });
+          san = mv.san;
+        } catch {
+          return;
+        }
+        b.fen = game.fen();
+        b.history.push(san);
+        if (game.isCheckmate()) {
+          room.status = "over";
+          room.winnerId = meId;
+        } else if (game.isStalemate() || game.isDraw()) {
+          room.status = "over";
+          room.winnerId = null;
+        } else {
+          room.turn = room.turn === room.hostId ? (room.guestId as string) : room.hostId;
+        }
       }
       // records resolved at game end, atomically with the result
       room.updatedAt = new Date().toISOString();
-      // re-encode: RTDB strips nulls inside arrays
-      room.board = encodeBoard(
-        room.kind,
-        room.board as TTTBoard | C4Board
-      );
+      // re-encode string-boards: RTDB strips nulls inside arrays
+      if (room.kind === "tictactoe" || room.kind === "connectfour") {
+        room.board = encodeBoard(
+          room.kind,
+          room.board as TTTBoard | C4Board
+        );
+      }
       return room;
     }));
   if (!res.committed || !res.snapshot.val())
@@ -345,9 +618,19 @@ export async function rematch(
       room.rematch[meId] = true;
       const other = meId === room.hostId ? room.guestId : room.hostId;
       if (other && room.rematch[other]) {
-        // both ready — new round, starter alternates for fairness
+        // both ready — new round; chess swaps colors (White always moves
+        // first), everything else alternates the starter for fairness
+        if (room.kind === "chess" && room.guestId) {
+          const h = room.hostId;
+          room.hostId = room.guestId;
+          room.guestId = h;
+        }
         const nextStarter =
-          room.starterId === room.hostId ? room.guestId : room.hostId;
+          room.kind === "chess"
+            ? room.hostId
+            : room.starterId === room.hostId
+              ? room.guestId
+              : room.hostId;
         room.board = encodeBoard(
           room.kind,
           freshBoard(room.kind) as TTTBoard | C4Board

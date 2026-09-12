@@ -12,6 +12,10 @@ import { GAME_LABEL, type GameKind, type GameView } from "@/lib/games/types";
 const GAMES: { kind: GameKind; blurb: string; emoji: string }[] = [
   { kind: "tictactoe", blurb: "Three in a row. Fast and ruthless.", emoji: "⭕" },
   { kind: "connectfour", blurb: "Drop discs, connect four.", emoji: "🔴" },
+  { kind: "rps", blurb: "Best of 5 — bluff, read, strike.", emoji: "✊" },
+  { kind: "number", blurb: "Guess 1–100 in the fewest tries.", emoji: "🔢" },
+  { kind: "twentyone", blurb: "Hit or stand, closest to 21.", emoji: "🃏" },
+  { kind: "chess", blurb: "The royal game. Full rules.", emoji: "♟️" },
 ];
 
 export function GamesLobby({

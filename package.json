@@ -10,6 +10,7 @@
     "migrate:rtdb": "node scripts/migrate-to-rtdb.mjs"
   },
   "dependencies": {
+    "chess.js": "^1.4.0",
     "clsx": "^2.1.1",
     "firebase": "^12.19.0",
     "firebase-admin": "^14.4.0",

@@ -9,9 +9,19 @@ import { api, ApiTimeoutError } from "@/lib/api";
 import { Avatar } from "@/components/post-card";
 import { LiveDot } from "@/components/presence";
 import { TTTBoardView, C4BoardView } from "@/components/game-boards";
+import {
+  RPSBoardView,
+  NumberBoardView,
+  TwentyOneBoardView,
+} from "@/components/party-boards";
+import { ChessBoardView } from "@/components/chess-board";
 import { GAME_LABEL, type GameView } from "@/lib/games/types";
 import type { TTTBoard } from "@/lib/games/tictactoe";
 import type { C4Board } from "@/lib/games/connectfour";
+import type { RPSBoard } from "@/lib/games/rps";
+import type { NumberBoard } from "@/lib/games/number";
+import type { TwentyBoard } from "@/lib/games/twentyone";
+import type { ChessBoard } from "@/lib/games/chess";
 import { playLose, playMove, playWin } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 
@@ -230,10 +240,10 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
       <div className="grid grid-cols-2 gap-2">
         {(
           [
-            { p: room.players.host, mark: room.kind === "tictactoe" ? "X" : "R" },
-            { p: room.players.guest, mark: room.kind === "tictactoe" ? "O" : "Y" },
+            { p: room.players.host, role: room.kind === "tictactoe" ? "plays X" : room.kind === "connectfour" ? "plays R" : room.kind === "chess" ? "White" : "Host" },
+            { p: room.players.guest, role: room.kind === "tictactoe" ? "plays O" : room.kind === "connectfour" ? "plays Y" : room.kind === "chess" ? "Black" : "Challenger" },
           ] as const
-        ).map(({ p, mark }, i) => (
+        ).map(({ p, role }, i) => (
           <div
             key={i}
             className={cn(
@@ -255,7 +265,7 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
                   <p className="truncate text-[13px] font-semibold">
                     {p.id === meId ? "You" : p.name}
                   </p>
-                  <p className="text-[11px] text-zinc-500">plays {mark}</p>
+                  <p className="text-[11px] text-zinc-500">{role}</p>
                 </div>
               </>
             ) : (
@@ -300,12 +310,44 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
             interactive={room.yourTurn && !busy}
             onCell={(cell) => act("move", { cell })}
           />
-        ) : (
+        ) : room.kind === "connectfour" ? (
           <C4BoardView
             board={room.board as C4Board}
             winLine={(room.winLine as [number, number][] | null) ?? null}
             interactive={room.yourTurn && !busy}
             onCol={(col) => act("move", { col })}
+          />
+        ) : room.kind === "rps" ? (
+          <RPSBoardView
+            board={room.board as RPSBoard}
+            interactive={room.yourTurn && !busy}
+            onPick={(pick) => act("move", { pick })}
+          />
+        ) : room.kind === "number" ? (
+          <NumberBoardView
+            board={room.board as NumberBoard}
+            interactive={room.yourTurn && !busy}
+            onGuess={(n) => act("move", { guess: n })}
+          />
+        ) : room.kind === "twentyone" ? (
+          <TwentyOneBoardView
+            board={room.board as TwentyBoard}
+            meId={meId}
+            opponentId={room.opponentId}
+            interactive={room.yourTurn && !busy}
+            onHit={() => act("move", { action: "hit" })}
+            onStand={() => act("move", { action: "stand" })}
+          />
+        ) : (
+          <ChessBoardView
+            board={room.board as ChessBoard}
+            myColor={
+              meId === room.hostId ? "w" : room.guestId === meId ? "b" : null
+            }
+            interactive={room.yourTurn && !busy}
+            onMove={(from, to, promotion) =>
+              act("move", { from, to, promotion })
+            }
           />
         )}
       </div>
