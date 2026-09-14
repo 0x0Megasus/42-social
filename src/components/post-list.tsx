@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { PostCard, type FeedPost } from "@/components/post-card";
+import { PostFocusModal } from "@/components/post-focus-modal";
 
-// Single-open accordion: at most one comments section open at a time.
+// Feed/profile list: a comment click isolates the post + thread in a focus
+// popup instead of expanding inline. The popup tracks the live feed item,
+// so likes/edits stay in sync — and if the post leaves the feed (deleted),
+// the popup closes with it.
 export function PostList({
   posts,
   onUpdate,
@@ -17,7 +21,11 @@ export function PostList({
   meName?: string;
   meId?: string;
 }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [popupId, setPopupId] = useState<string | null>(null);
+  const openPopup = useCallback((p: FeedPost) => setPopupId(p.id), []);
+  const closePopup = useCallback(() => setPopupId(null), []);
+  const popup = popupId ? (posts.find((p) => p.id === popupId) ?? null) : null;
+
   return (
     <>
       {posts.map((p) => (
@@ -25,13 +33,21 @@ export function PostList({
           key={p.id}
           post={p}
           onUpdate={onUpdate}
-          open={p.id === openId}
-          onToggle={() => setOpenId((cur) => (cur === p.id ? null : p.id))}
+          onFocusPost={openPopup}
           focused={focusId ? p.id === focusId : undefined}
           meName={meName}
           meId={meId}
         />
       ))}
+      {popup && (
+        <PostFocusModal
+          post={popup}
+          meName={meName}
+          meId={meId}
+          onUpdate={onUpdate}
+          onClose={closePopup}
+        />
+      )}
     </>
   );
 }

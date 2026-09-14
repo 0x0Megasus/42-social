@@ -118,6 +118,7 @@ export function PostCard({
   focused,
   meName,
   meId,
+  onFocusPost,
 }: {
   post: FeedPost;
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
@@ -126,6 +127,9 @@ export function PostCard({
   focused?: boolean;
   meName?: string;
   meId?: string;
+  // When set, a comment click isolates the post in a focus popup instead
+  // of expanding the thread inline.
+  onFocusPost?: (post: FeedPost) => void;
 }) {
   const router = useRouter();
   const [liked, setLiked] = useState(post.liked);
@@ -178,6 +182,10 @@ export function PostCard({
   }
 
   async function loadComments() {
+    if (onFocusPost) {
+      onFocusPost(post);
+      return;
+    }
     if (isOpen) {
       setIsOpen(false);
       return;
