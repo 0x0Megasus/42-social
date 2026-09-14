@@ -30,7 +30,14 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       const a = byId.get(c.authorId);
       return {
         ...c,
-        author: a ? { id: a.id, name: a.name, login42: a.login42 } : null,
+        author: a
+          ? {
+              id: a.id,
+              name: a.name,
+              login42: a.login42,
+              isSupport: isSupportUser(a),
+            }
+          : null,
       };
     });
   return (
