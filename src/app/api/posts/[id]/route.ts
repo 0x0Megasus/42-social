@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readDB, updateDB, userPublic } from "@/lib/db";
+import { isSupportUser } from "@/lib/support";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -84,7 +85,11 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     const idx = db.posts.findIndex((x) => x.id === id);
     if (idx === -1) return null;
     const p = db.posts[idx];
-    if (p.authorId !== session.sub || p.deleted) return null;
+    // Owners delete their own live posts; support can remove anything,
+    // including legacy soft-deleted rows (p.deleted cleanup).
+    const me = db.users.find((u) => u.id === session.sub);
+    const mine = p.authorId === session.sub && !p.deleted;
+    if (!mine && !isSupportUser(me)) return null;
     db.posts.splice(idx, 1);
     db.likes = db.likes.filter((l) => l.postId !== id);
     db.comments = db.comments.filter((c) => c.postId !== id);

@@ -6,12 +6,17 @@ Campus network for 42 / 1337 students. Next.js 16 (App Router) + React 19 + Fire
 
 ```bash
 npm install
-cp .env.local.example .env.local  # fill FIREBASE_*, AUTH_SECRET, 42 OAuth
+cp .env.example .env.local  # fill FIREBASE_*, AUTH_SECRET, 42 OAuth
 npm run dev
 ```
 
 Required env: `FIREBASE_DATABASE_URL`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_SECRET`.
 The server fails closed without them — no silent local fallback.
+
+Support/moderation: set `SUPPORT_IDENTIFIERS` to a comma-separated list of
+emails, 42 logins, or user ids (e.g. `SUPPORT_IDENTIFIERS="you@gmail.com"`).
+It is read server-side only and never ships to the browser. Listed accounts
+can delete any post and get a Support badge. See `.env.local.example`.
 
 ## Scripts
 

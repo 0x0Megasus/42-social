@@ -14,12 +14,14 @@ export function PostList({
   focusId,
   meName,
   meId,
+  viewerIsSupport,
 }: {
   posts: FeedPost[];
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
   focusId?: string | null;
   meName?: string;
   meId?: string;
+  viewerIsSupport?: boolean;
 }) {
   const [popupId, setPopupId] = useState<string | null>(null);
   const openPopup = useCallback((p: FeedPost) => setPopupId(p.id), []);
@@ -37,6 +39,7 @@ export function PostList({
           focused={focusId ? p.id === focusId : undefined}
           meName={meName}
           meId={meId}
+          viewerIsSupport={viewerIsSupport}
         />
       ))}
       {popup && (
@@ -46,6 +49,7 @@ export function PostList({
           meId={meId}
           onUpdate={onUpdate}
           onClose={closePopup}
+          viewerIsSupport={viewerIsSupport}
         />
       )}
     </>

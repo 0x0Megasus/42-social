@@ -1,4 +1,5 @@
 import { getRtdb, isRtdbConfigured, rtdb } from "@/lib/fbrdb";
+import { isSupportUser } from "@/lib/support";
 
 // Storage engine: Firebase Realtime Database, ONLY.
 // The server refuses to boot routes without the three FIREBASE_* env vars,
@@ -224,5 +225,6 @@ export function userPublic(u: User) {
     bio: u.bio,
     socials: Array.isArray(u.socials) ? u.socials : [],
     lastSeen: u.lastSeen ?? null,
+    isSupport: isSupportUser(u),
   };
 }

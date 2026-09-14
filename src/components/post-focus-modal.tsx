@@ -15,12 +15,14 @@ export function PostFocusModal({
   meId,
   onUpdate,
   onClose,
+  viewerIsSupport,
 }: {
   post: FeedPost;
   meName?: string;
   meId?: string;
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
   onClose: () => void;
+  viewerIsSupport?: boolean;
 }) {
   // The feed card carries no thread — fetch it so the popup opens with
   // comments visible instead of an empty "no comments" flash.
@@ -82,6 +84,7 @@ export function PostFocusModal({
             onUpdate={onUpdate}
             meName={meName}
             meId={meId}
+            viewerIsSupport={viewerIsSupport}
           />
         ) : (
           <div className="overflow-hidden rounded-2xl">

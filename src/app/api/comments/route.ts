@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readDB, updateDB, uid, type QuotedReply } from "@/lib/db";
+import { isSupportUser } from "@/lib/support";
 import { getSession } from "@/lib/session";
 import { rateLimit, isDuplicate } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -21,7 +22,12 @@ export async function GET(req: Request) {
         return {
           ...c,
           author: a
-            ? { id: a.id, name: a.name, login42: a.login42 }
+            ? {
+                id: a.id,
+                name: a.name,
+                login42: a.login42,
+                isSupport: isSupportUser(a),
+              }
             : null,
         };
       }),

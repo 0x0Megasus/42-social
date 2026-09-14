@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Avatar } from "@/components/post-card";
+import { SupportBadge } from "@/components/support-badge";
 import { FollowButton } from "@/components/auth-buttons";
 import { MessageButton } from "@/components/message-button";
 import { LiveDot } from "@/components/presence";
@@ -19,6 +20,7 @@ export type ExploreUser = {
   online: boolean;
   following: boolean;
   isMe: boolean;
+  isSupport: boolean;
 };
 
 export function ExploreClient({ users }: { users: ExploreUser[] }) {
@@ -90,12 +92,15 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
               <LiveDot userId={u.id} initialOnline={u.online} />
             </span>
             <div className="min-w-0 flex-1">
-              <Link
-                href={`/profile/${encodeURIComponent(handle)}`}
-                className="block truncate text-[14px] font-semibold hover:underline"
-              >
-                {u.name}
-              </Link>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Link
+                  href={`/profile/${encodeURIComponent(handle)}`}
+                  className="block min-w-0 truncate text-[14px] font-semibold hover:underline"
+                >
+                  {u.name}
+                </Link>
+                {u.isSupport && <SupportBadge />}
+              </span>
               <p className="truncate text-xs text-zinc-500">
                 @{handle}
                 {u.campus ? ` · ${u.campus}` : ""} · {u.posts} posts ·{" "}

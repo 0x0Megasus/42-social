@@ -13,6 +13,7 @@ export type PublicUser = {
   bio: string;
   socials: { label: string; url: string }[];
   lastSeen: string | null;
+  isSupport: boolean;
 };
 
 export type FeedPost = {
@@ -29,7 +30,7 @@ export type FeedPost = {
   author: Pick<
     PublicUser,
     "id" | "name" | "login42" | "avatar" | "campus"
-  > | null;
+  > & { isSupport?: boolean | null } | null;
 };
 
 export type FeedCommentAuthor = {
@@ -37,6 +38,7 @@ export type FeedCommentAuthor = {
   name: string;
   login42?: string | null;
   avatar?: string | null;
+  isSupport?: boolean | null;
 };
 
 export type FeedComment = {

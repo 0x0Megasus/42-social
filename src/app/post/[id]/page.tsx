@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { readDB, userPublic } from "@/lib/db";
+import { isSupportUser } from "@/lib/support";
 import { getSession } from "@/lib/session";
 import { PostCard } from "@/components/post-card";
 
@@ -37,7 +38,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:text-[#E4E4E7] dark:hover:text-zinc-100">
         <ArrowLeft size={16} /> Back to feed
       </Link>
-      <PostCard post={post} meName={me?.name} meId={me?.id} open initialComments={initialComments} />
+      <PostCard post={post} meName={me?.name} meId={me?.id} open initialComments={initialComments} viewerIsSupport={isSupportUser(meUser)} />
     </div>
   );
 }

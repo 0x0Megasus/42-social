@@ -25,6 +25,7 @@ export default async function Explore() {
       online: isOnlineAt(beats.get(u.id)),
       following: following.has(u.id),
       isMe: session?.sub === u.id,
+      isSupport: pub.isSupport,
     };
   });
   return <ExploreClient users={items} />;

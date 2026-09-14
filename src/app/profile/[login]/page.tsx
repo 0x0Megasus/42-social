@@ -8,6 +8,8 @@ import { MessageButton } from "@/components/message-button";
 import { EditProfileForm } from "@/components/edit-profile";
 import { SoundSetting } from "@/components/sound-setting";
 import { LiveDot, PresenceText } from "@/components/presence";
+import { SupportBadge } from "@/components/support-badge";
+import { isSupportUser } from "@/lib/support";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
 import { getRecords } from "@/lib/games-store";
 import { GAME_LABEL, type GameKind } from "@/lib/games/types";
@@ -66,7 +68,10 @@ export default async function Profile({
             <LiveDot userId={user.id} initialOnline={peerOnline} size={18} />
           </span>
         </div>
-        <h1 className="mt-3 text-xl font-bold tracking-tight">{pub.name}</h1>
+        <h1 className="mt-3 flex items-center justify-center gap-2 text-xl font-bold tracking-tight">
+          {pub.name}
+          {pub.isSupport && <SupportBadge />}
+        </h1>
         <p className="text-[14px] text-zinc-500">
           @{pub.login42 ?? pub.name}
           {pub.coalition ? ` · ${pub.coalition}` : ""}
@@ -154,6 +159,11 @@ export default async function Profile({
               : undefined
           }
           meId={session?.sub}
+          viewerIsSupport={
+            session
+              ? isSupportUser(db.users.find((u) => u.id === session.sub))
+              : false
+          }
         />
       )}
     </div>

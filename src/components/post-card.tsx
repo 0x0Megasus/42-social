@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
+import { SupportBadge } from "@/components/support-badge";
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { Quote } from "@/components/quote";
 import { ChatSkeleton } from "@/components/skeletons";
@@ -32,6 +33,7 @@ export type FeedPost = {
     login42: string | null;
     avatar: string | null;
     campus: string | null;
+    isSupport?: boolean | null;
   } | null;
 };
 
@@ -98,6 +100,7 @@ export type CommentAuthor = {
   name: string;
   login42?: string | null;
   avatar?: string | null;
+  isSupport?: boolean | null;
 };
 
 export type FeedComment = {
@@ -121,6 +124,7 @@ export function PostCard({
   meId,
   onFocusPost,
   initialComments,
+  viewerIsSupport,
 }: {
   post: FeedPost;
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
@@ -135,6 +139,8 @@ export function PostCard({
   // Preloaded thread (focus popup, dedicated page) — the controlled-open
   // surfaces never receive the click that triggers loadComments.
   initialComments?: FeedComment[];
+  // Viewer is site support: can delete any post (never edit others').
+  viewerIsSupport?: boolean;
 }) {
   const router = useRouter();
   const [liked, setLiked] = useState(post.liked);
@@ -339,6 +345,9 @@ export function PostCard({
   }
 
   const isMine = !!meId && post.author?.id === meId && !post.deleted;
+  // Support deletes anything (moderation); editing stays author-only.
+  const canDelete =
+    !!meId && !post.deleted && (post.author?.id === meId || viewerIsSupport);
 
   async function savePostEdit() {
     const text = clean(postDraft, 500);
@@ -505,12 +514,15 @@ export function PostCard({
       <div className="flex items-center gap-3">
         <Avatar name={post.author?.name ?? "?"} src={post.author?.avatar ?? null} />
         <div className="min-w-0 flex-1">
-          <Link
-            href={`/profile/${handle}`}
-            className="block truncate text-[14px] font-semibold hover:underline"
-          >
-            {post.author?.name ?? "Unknown"}
-          </Link>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Link
+              href={`/profile/${handle}`}
+              className="block min-w-0 truncate text-[14px] font-semibold hover:underline"
+            >
+              {post.author?.name ?? "Unknown"}
+            </Link>
+            {post.author?.isSupport && <SupportBadge />}
+          </span>
           <p className="truncate text-xs text-zinc-500">
             @{handle}
             {post.author?.campus ? ` · ${post.author.campus}` : ""} ·{" "}
@@ -548,7 +560,7 @@ export function PostCard({
                   >
                     <Share2 size={13} /> Share post
                   </button>
-                  {isMine ? (
+                  {canDelete ? (
                     confirmDeletePost ? (
                       <>
                         <button
@@ -568,18 +580,20 @@ export function PostCard({
                       </>
                     ) : (
                       <>
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            setPostDraft(bodyOverride ?? post.body);
-                            setEditingPost(true);
-                            setPostMenuOpen(false);
-                            setConfirmDeletePost(false);
-                          }}
-                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
-                        >
-                          <Pencil size={13} /> Edit post
-                        </button>
+                        {isMine && (
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setPostDraft(bodyOverride ?? post.body);
+                              setEditingPost(true);
+                              setPostMenuOpen(false);
+                              setConfirmDeletePost(false);
+                            }}
+                            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
+                          >
+                            <Pencil size={13} /> Edit post
+                          </button>
+                        )}
                         <button
                           role="menuitem"
                           onClick={() => setConfirmDeletePost(true)}
@@ -724,6 +738,7 @@ export function PostCard({
                       >
                         {who}
                       </Link>
+                      {c.author?.isSupport && <SupportBadge />}
                       {c.createdAt && (
                         <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
                           {timeAgo(c.createdAt)}

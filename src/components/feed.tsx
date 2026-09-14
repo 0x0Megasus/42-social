@@ -129,6 +129,7 @@ export function Feed({
           focusId={focusId}
           meName={me?.name}
           meId={me?.id}
+          viewerIsSupport={me?.isSupport ?? false}
         />
       )}
     </div>
