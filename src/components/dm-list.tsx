@@ -81,7 +81,7 @@ export function DmList({ meId }: { meId: string }) {
       <h1 className="px-1 text-lg font-bold tracking-tight">Messages</h1>
       {loading ? (
         <div className="space-y-3" role="status" aria-label="Loading messages">
-          <DmRowSkeleton count={3} />
+          <DmRowSkeleton count={1} />
         </div>
       ) : (
         <>

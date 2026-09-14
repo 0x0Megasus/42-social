@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Check, X, Reply, ArrowDown } from "lucide-react";
@@ -68,6 +74,7 @@ export function DmThread({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
+  const [activeMsgId, setActiveMsgId] = useState<string | null>(null);
   const dmInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastIdsRef = useRef<string>("");
@@ -262,8 +269,16 @@ export function DmThread({
     setTimeout(() => setFlashId((f) => (f === id ? null : f)), 1200);
   }
 
+  // Touch devices: message actions appear only for the tapped message.
+  function onRowTap(e: ReactMouseEvent, id: string) {
+    const t = e.target as HTMLElement;
+    if (t.closest("button, a, textarea, input, [role='toolbar']")) return;
+    setActiveMsgId((cur) => (cur === id ? null : id));
+  }
+
   function startReply(m: Msg) {
     setReplyTo(m);
+    setActiveMsgId(null);
     setConfirmDeleteId(null);
     document
       .getElementById("dm-input")
@@ -318,7 +333,7 @@ export function DmThread({
   return (
     <div
       className={cn(
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[#2E3035]",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden",
         C.bg,
         C.text
       )}
@@ -326,6 +341,9 @@ export function DmThread({
       <div
         ref={scrollRef}
         onScroll={onThreadScroll}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setActiveMsgId(null);
+        }}
         className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2 pt-5 [scrollbar-gutter:stable]"
       >
         {loading ? (
@@ -369,10 +387,11 @@ export function DmThread({
                   aria-label="Message actions"
                   className={cn(
                     "absolute right-3 top-0 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-[#1e1f22] bg-[#111214] p-0.5 shadow-md",
-                    "translate-y-1 opacity-0 transition-all duration-150",
-                    "group-hover:translate-y-[-50%] group-hover:opacity-100",
-                    "group-focus-within:translate-y-[-50%] group-focus-within:opacity-100",
-                    "[@media(hover:none)]:translate-y-[-50%] [@media(hover:none)]:opacity-100"
+                    "pointer-events-none translate-y-1 opacity-0 transition-all duration-150",
+                    "group-hover:pointer-events-auto group-hover:translate-y-[-50%] group-hover:opacity-100",
+                    "group-focus-within:pointer-events-auto group-focus-within:translate-y-[-50%] group-focus-within:opacity-100",
+                    activeMsgId === m.id &&
+                      "[@media(hover:none)]:pointer-events-auto [@media(hover:none)]:translate-y-[-50%] [@media(hover:none)]:opacity-100"
                   )}
                 >
                   <button
@@ -389,6 +408,7 @@ export function DmThread({
                         onClick={() => {
                           setEditDraft(m.body);
                           setEditingId(m.id);
+                          setActiveMsgId(null);
                           setConfirmDeleteId(null);
                         }}
                         aria-label="Edit message"
@@ -464,6 +484,7 @@ export function DmThread({
                   <div
                     key={m.id}
                     id={`dm-msg-${m.id}`}
+                    onClick={(e) => onRowTap(e, m.id)}
                     className={cn(
                       "group relative scroll-mt-2 px-4",
                       compact ? "py-0.5" : "pb-0.5 pt-2",
@@ -514,6 +535,7 @@ export function DmThread({
                   <div
                     key={m.id}
                     id={`dm-msg-${m.id}`}
+                    onClick={(e) => onRowTap(e, m.id)}
                     className={cn(
                       "group relative scroll-mt-2 px-4 py-[3px]",
                       C.hover,
@@ -524,12 +546,13 @@ export function DmThread({
                     <div className="flex items-baseline gap-3">
                       <span
                         title={fullTime}
-                        className="w-10 shrink-0 select-none text-right text-[10px] tabular-nums text-transparent transition-colors group-hover:text-[#949BA4]"
+                        className="w-10 shrink-0 select-none whitespace-nowrap overflow-hidden text-right text-[10px] tabular-nums text-transparent transition-colors group-hover:text-[#949BA4]"
                         aria-hidden
                       >
                         {new Date(m.createdAt).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
+                          hour12: false,
                         })}
                       </span>
                       <div className="min-w-0 flex-1 text-[15px] leading-[22px] text-[#DBDEE1]">
@@ -590,6 +613,7 @@ export function DmThread({
                 <div
                   key={m.id}
                   id={`dm-msg-${m.id}`}
+                  onClick={(e) => onRowTap(e, m.id)}
                   className={cn(
                     "group relative scroll-mt-2 px-4 pb-0.5 pt-2",
                     C.hover,

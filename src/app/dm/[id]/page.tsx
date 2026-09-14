@@ -33,9 +33,10 @@ export default async function DmChat({
     : false;
 
   return (
-    // Break out of the global max-w-xl shell so the chat gets real room.
-    <div className="relative left-1/2 flex h-[calc(100dvh-10rem)] min-h-[20rem] w-[min(56rem,calc(100vw-2rem))] max-w-none -translate-x-1/2 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 px-1 pb-3">
+    // Full-screen chat: fixed overlay above navbar/footer (they stay mounted,
+    // so presence heartbeats and unread badges keep working behind it).
+    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-50 dark:bg-black">
+      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200/70 px-3 py-2.5 dark:border-zinc-800">
         <Link
           href="/dm"
           aria-label="Back to messages"

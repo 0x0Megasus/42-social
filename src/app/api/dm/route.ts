@@ -20,8 +20,10 @@ export async function GET() {
     .map((c) => {
       const peerId = otherOf(c, session.sub);
       const peer = byId.get(peerId);
+      // Deleted messages are tombstones: skip them for the preview and
+      // unread count so "delete" really makes them disappear in the list.
       const msgs = db.messages
-        .filter((m) => m.convoId === c.id)
+        .filter((m) => m.convoId === c.id && !m.deleted)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       const last = msgs[msgs.length - 1] ?? null;
       const unread = msgs.filter(
