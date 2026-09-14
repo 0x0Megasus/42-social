@@ -49,10 +49,18 @@ export function Avatar({
   online?: boolean | null;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const dot =
     online === undefined ? null : (
       <StatusDot online={online} size={Math.max(10, size * 0.3)} />
     );
+  // SSR/cached images can finish before onLoad attaches (missed event →
+  // stuck on the initial forever). Sync with the real decode state on
+  // mount and whenever the url changes.
+  useEffect(() => {
+    const el = imgRef.current;
+    setLoaded(!!el && el.complete && el.naturalWidth > 0);
+  }, [src]);
   if (!src)
     return (
       <span
@@ -80,6 +88,7 @@ export function Avatar({
         </span>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
+          ref={imgRef}
           src={src}
           alt={name}
           width={size}
