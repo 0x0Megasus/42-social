@@ -21,12 +21,23 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
   const meUser = db.users.find((u) => u.id === session.sub);
   const me = meUser ? userPublic(meUser) : null;
   const post = { ...p, author: author ? userPublic(author) : null, likes, comments, liked };
+  const byId = new Map(db.users.map((u) => [u.id, u]));
+  const initialComments = db.comments
+    .filter((c) => c.postId === id && !c.deleted)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((c) => {
+      const a = byId.get(c.authorId);
+      return {
+        ...c,
+        author: a ? { id: a.id, name: a.name, login42: a.login42 } : null,
+      };
+    });
   return (
     <div className="space-y-4">
       <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:text-[#E4E4E7] dark:hover:text-zinc-100">
         <ArrowLeft size={16} /> Back to feed
       </Link>
-      <PostCard post={post} meName={me?.name} meId={me?.id} open />
+      <PostCard post={post} meName={me?.name} meId={me?.id} open initialComments={initialComments} />
     </div>
   );
 }

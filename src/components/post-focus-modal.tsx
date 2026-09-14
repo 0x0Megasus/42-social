@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { PostCard, type FeedPost } from "@/components/post-card";
+import { PostCard, type FeedComment, type FeedPost } from "@/components/post-card";
+import { PostCardSkeleton } from "@/components/skeletons";
+import { api } from "@/lib/api";
 
 // Focused post popup: the post + its comments isolated from the feed so
 // the reader can focus. Dismiss via X, backdrop click, or Escape.
@@ -20,6 +22,10 @@ export function PostFocusModal({
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
   onClose: () => void;
 }) {
+  // The feed card carries no thread — fetch it so the popup opens with
+  // comments visible instead of an empty "no comments" flash.
+  const [thread, setThread] = useState<FeedComment[] | null>(null);
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
@@ -31,6 +37,23 @@ export function PostFocusModal({
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const res = await api(`/api/comments?postId=${post.id}`);
+        const d = res.ok ? await res.json().catch(() => null) : null;
+        if (!stop)
+          setThread(Array.isArray(d?.comments) ? d.comments : []);
+      } catch {
+        if (!stop) setThread([]);
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [post.id]);
 
   return (
     <div
@@ -51,7 +74,20 @@ export function PostFocusModal({
             <X size={17} />
           </button>
         </div>
-        <PostCard post={post} open onUpdate={onUpdate} meName={meName} meId={meId} />
+        {thread ? (
+          <PostCard
+            post={post}
+            open
+            initialComments={thread}
+            onUpdate={onUpdate}
+            meName={meName}
+            meId={meId}
+          />
+        ) : (
+          <div className="overflow-hidden rounded-2xl">
+            <PostCardSkeleton />
+          </div>
+        )}
       </div>
     </div>
   );

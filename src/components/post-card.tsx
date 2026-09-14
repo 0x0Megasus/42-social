@@ -119,6 +119,7 @@ export function PostCard({
   meName,
   meId,
   onFocusPost,
+  initialComments,
 }: {
   post: FeedPost;
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
@@ -130,6 +131,9 @@ export function PostCard({
   // When set, a comment click isolates the post in a focus popup instead
   // of expanding the thread inline.
   onFocusPost?: (post: FeedPost) => void;
+  // Preloaded thread (focus popup, dedicated page) — the controlled-open
+  // surfaces never receive the click that triggers loadComments.
+  initialComments?: FeedComment[];
 }) {
   const router = useRouter();
   const [liked, setLiked] = useState(post.liked);
@@ -143,7 +147,9 @@ export function PostCard({
       setInnerOpen(v);
     }
   }
-  const [comments, setComments] = useState<FeedComment[]>([]);
+  const [comments, setComments] = useState<FeedComment[]>(
+    initialComments ?? []
+  );
   const [loadingComments, setLoadingComments] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
