@@ -111,7 +111,7 @@ export function GamesLobby({
 
       <form
         onSubmit={join}
-        className="flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
+        className="flex items-stretch gap-2 rounded-2xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
       >
         <label htmlFor="join-code" className="sr-only">
           Room code
@@ -123,12 +123,12 @@ export function GamesLobby({
           placeholder="Code or invite link — e.g. K7Q2XD"
           maxLength={200}
           autoComplete="off"
-          className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 font-mono text-[14px] uppercase tracking-widest text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          className="h-10 min-w-0 flex-1 appearance-none rounded border-[1px] border-[#27272A] bg-[#09090B] px-3 font-mono text-[14px] uppercase tracking-widest text-[#F4F4F5] placeholder:tracking-normal placeholder:text-[12px] placeholder:text-[#71717A] sm:placeholder:text-[13px] outline-none focus:border-[#52525B]"
         />
         <button
           type="submit"
           disabled={joining}
-          className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-[2px] bg-[#FAFAFA] px-4 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
+          className="flex shrink-0 items-center justify-center gap-1.5 rounded border-[1px] border-transparent bg-[#FAFAFA] px-4 text-[14px] font-semibold leading-none text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
         >
           {joining ? (
             <LoaderCircle size={15} className="animate-spin" />
