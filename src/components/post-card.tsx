@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
-import { SupportBadge } from "@/components/support-badge";
+import { FounderBadge } from "@/components/founder-badge";
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { Quote } from "@/components/quote";
 import { ChatSkeleton } from "@/components/skeletons";
@@ -521,7 +521,7 @@ export function PostCard({
             >
               {post.author?.name ?? "Unknown"}
             </Link>
-            {post.author?.isSupport && <SupportBadge />}
+            {post.author?.isSupport && <FounderBadge />}
           </span>
           <p className="truncate text-xs text-zinc-500">
             @{handle}
@@ -738,7 +738,7 @@ export function PostCard({
                       >
                         {who}
                       </Link>
-                      {c.author?.isSupport && <SupportBadge />}
+                      {c.author?.isSupport && <FounderBadge />}
                       {c.createdAt && (
                         <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
                           {timeAgo(c.createdAt)}

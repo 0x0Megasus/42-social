@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Avatar } from "@/components/post-card";
-import { SupportBadge } from "@/components/support-badge";
+import { FounderBadge } from "@/components/founder-badge";
 import { FollowButton } from "@/components/auth-buttons";
 import { MessageButton } from "@/components/message-button";
 import { LiveDot } from "@/components/presence";
@@ -99,7 +99,7 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
                 >
                   {u.name}
                 </Link>
-                {u.isSupport && <SupportBadge />}
+                {u.isSupport && <FounderBadge />}
               </span>
               <p className="truncate text-xs text-zinc-500">
                 @{handle}

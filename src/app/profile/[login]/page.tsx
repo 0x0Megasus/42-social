@@ -8,7 +8,7 @@ import { MessageButton } from "@/components/message-button";
 import { EditProfileForm } from "@/components/edit-profile";
 import { SoundSetting } from "@/components/sound-setting";
 import { LiveDot, PresenceText } from "@/components/presence";
-import { SupportBadge } from "@/components/support-badge";
+import { FounderBadge } from "@/components/founder-badge";
 import { isSupportUser } from "@/lib/support";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
 import { getRecords } from "@/lib/games-store";
@@ -70,7 +70,7 @@ export default async function Profile({
         </div>
         <h1 className="mt-3 flex items-center justify-center gap-2 text-xl font-bold tracking-tight">
           {pub.name}
-          {pub.isSupport && <SupportBadge />}
+          {pub.isSupport && <FounderBadge />}
         </h1>
         <p className="text-[14px] text-zinc-500">
           @{pub.login42 ?? pub.name}
