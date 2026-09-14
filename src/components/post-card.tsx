@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
+import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { Quote } from "@/components/quote";
 import { ChatSkeleton } from "@/components/skeletons";
 import { renderRich, stripMarkup } from "@/components/rich-text";
@@ -303,7 +304,7 @@ export function PostCard({
   const [showJump, setShowJump] = useState(false);
   const [replyTo, setReplyTo] = useState<FeedComment | null>(null);
   const [flashComment, setFlashComment] = useState<string | null>(null);
-  const replyInputRef = useRef<HTMLInputElement>(null);
+  const replyInputRef = useRef<HTMLTextAreaElement>(null);
 
   function scrollChatToBottom(smooth = true) {
     const el = chatRef.current;
@@ -886,19 +887,25 @@ export function PostCard({
               </button>
             </div>
           )}
-          <form onSubmit={sendComment} className="flex items-center gap-2 p-1.5">
+          <form onSubmit={sendComment} className="flex items-end gap-2 p-1.5">
             <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 300))} />
             <label htmlFor={`reply-${post.id}`} className="sr-only">
               Chat a reply
             </label>
-            <input
+            <AutoGrowTextarea
               ref={replyInputRef}
               id={`reply-${post.id}`}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="Add a comment…"
               maxLength={300}
-              className="h-9 min-w-0 flex-1 rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 text-[14px] text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+              className="min-h-9 min-w-0 flex-1 rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 py-2 text-[14px] leading-5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
             />
             <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
               {graphemeLen(draft)}/300

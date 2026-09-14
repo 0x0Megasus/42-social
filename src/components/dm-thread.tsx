@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Check, X, Reply, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
+import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { renderRich, stripMarkup } from "@/components/rich-text";
 import { Avatar } from "@/components/post-card";
 import { ChatSkeleton } from "@/components/skeletons";
@@ -67,7 +68,7 @@ export function DmThread({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
-  const dmInputRef = useRef<HTMLInputElement>(null);
+  const dmInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastIdsRef = useRef<string>("");
   const lastPeerRef = useRef<string>("");
@@ -710,22 +711,28 @@ export function DmThread({
           e.preventDefault();
           send(draft);
         }}
-        className="flex shrink-0 items-center gap-1 border-t border-[#1e1f22] bg-black p-2"
+        className="flex shrink-0 items-end gap-1 border-t border-[#1e1f22] bg-black p-2"
       >
         <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 500))} />
 
         <label htmlFor="dm-input" className="sr-only">
           Message
         </label>
-        <input
+        <AutoGrowTextarea
           ref={dmInputRef}
           id="dm-input"
           value={draft}
           onChange={(e) => setDraft(takeGraphemes(e.target.value, 500))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder={`Message ${peerName}`}
           maxLength={1000}
           autoComplete="off"
-          className="h-9 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          className="min-h-9 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-2 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
         <span className="shrink-0 text-[11px] tabular-nums text-[#949BA4]">
           {graphemeLen(draft)}/500
