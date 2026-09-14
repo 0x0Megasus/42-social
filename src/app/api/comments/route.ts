@@ -26,6 +26,7 @@ export async function GET(req: Request) {
                 id: a.id,
                 name: a.name,
                 login42: a.login42,
+                avatar: a.avatar ?? null,
                 isSupport: isSupportUser(a),
               }
             : null,
@@ -112,7 +113,12 @@ export async function POST(req: Request) {
       comment: {
         ...c,
         author: author
-          ? { id: author.id, name: author.name, login42: author.login42 }
+          ? {
+              id: author.id,
+              name: author.name,
+              login42: author.login42,
+              avatar: author.avatar ?? null,
+            }
           : null,
       },
       total: db.comments.filter((x) => x.postId === postId && !x.deleted)

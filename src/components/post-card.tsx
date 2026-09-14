@@ -740,7 +740,7 @@ export function PostCard({
                     <Avatar name={who} src={c.author?.avatar ?? null} size={32} />
                   </Link>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <Link
                         href={handle ? `/profile/${encodeURIComponent(handle)}` : "#"}
                         className="text-[13px] font-bold text-zinc-900 hover:underline dark:text-zinc-50"
@@ -805,7 +805,7 @@ export function PostCard({
                     ) : (
                       <div
                         className={cn(
-                          "mt-0.5 rounded-2xl rounded-tl-md border px-2.5 py-1.5 text-[13.5px] leading-5",
+                          "mt-0.5 w-fit max-w-full rounded-2xl rounded-tl-md border px-2.5 py-1.5 text-[13.5px] leading-5",
                           // All bubbles share one dark surface.
                           mine
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-[#2c2d2e] dark:bg-[#2c2d2e] dark:text-white"

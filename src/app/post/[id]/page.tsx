@@ -35,6 +35,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
               id: a.id,
               name: a.name,
               login42: a.login42,
+              avatar: a.avatar ?? null,
               isSupport: isSupportUser(a),
             }
           : null,
