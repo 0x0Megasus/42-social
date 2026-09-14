@@ -43,3 +43,25 @@ export function isDuplicate(
   prune();
   return !!prev && prev.body === body && now - prev.at < windowMs;
 }
+
+/**
+ * Standard rate-limit headers (skill: api-design-principles).
+ * Returns `X-RateLimit-Limit/Remaining/Reset` + `Retry-After` on rejection
+ * so clients can back off without parsing bodies.
+ */
+export function rateLimitInfo(
+  key: string,
+  limit: number,
+  windowMs: number
+): { remaining: number; resetSeconds: number } {
+  const now = Date.now();
+  const arr = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  const oldest = arr.length > 0 ? arr[0] : now;
+  return {
+    remaining: Math.max(0, limit - arr.length),
+    resetSeconds: Math.max(
+      1,
+      Math.ceil((oldest + windowMs - now) / 1000)
+    ),
+  };
+}

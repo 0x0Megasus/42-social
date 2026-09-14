@@ -4,7 +4,49 @@ import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
 
-// PATCH /api/profile { name, bio } — edit your own nickname + bio.
+const ALLOWED_LABELS = new Set(["github", "linkedin", "instagram", "x"]);
+
+function normalizeUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.toString();
+  } catch {
+    // try adding https://
+    try {
+      const u2 = new URL(`https://${trimmed}`);
+      return u2.toString();
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeSocials(input: unknown): { label: string; url: string }[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const out: { label: string; url: string }[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
+    const rawLabel = typeof (item as Record<string, unknown>).label === "string" ? String((item as Record<string, unknown>).label).trim() : "";
+    const rawUrl = typeof (item as Record<string, unknown>).url === "string" ? String((item as Record<string, unknown>).url).trim() : "";
+    if (!rawLabel || !rawUrl) continue;
+    const lower = rawLabel.toLowerCase();
+    if (!ALLOWED_LABELS.has(lower)) continue;
+    if (seen.has(lower)) continue;
+    const norm = normalizeUrl(rawUrl);
+    if (!norm) continue;
+    seen.add(lower);
+    // canonical label is lower case as in ALLOWED_LABELS
+    out.push({ label: lower, url: norm });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+// PATCH /api/profile { name, bio, socials } — edit your own nickname + bio + socials.
 export async function PATCH(req: Request) {
   const session = await getSession();
   if (!session)
@@ -15,9 +57,10 @@ export async function PATCH(req: Request) {
       { error: "limit", retryAfter: lim.retryAfter },
       { status: 429, headers: { "Retry-After": String(lim.retryAfter) } }
     );
-  const { name, bio } = (await req.json().catch(() => ({}))) as {
+  const { name, bio, socials } = (await req.json().catch(() => ({}))) as {
     name?: string;
     bio?: string;
+    socials?: unknown;
   };
   const cleanName = clean(name, 30);
   const cleanBio = clean(bio, 160);
@@ -26,11 +69,13 @@ export async function PATCH(req: Request) {
       { error: "Name needs at least 2 characters." },
       { status: 400 }
     );
+  const normalized = normalizeSocials(socials);
   const user = await updateDB((db) => {
     const u = db.users.find((x) => x.id === session.sub);
     if (!u) return null;
     u.name = cleanName;
     u.bio = cleanBio;
+    u.socials = normalized;
     return userPublic(u);
   });
   if (!user) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { EmojiPicker } from "@/components/emoji-picker";
 import { FormatBar } from "@/components/format-bar";
+import { api } from "@/lib/api";
 import { graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import type { FeedPost } from "@/components/post-card";
 
@@ -26,7 +27,7 @@ export function Composer({
     if (!text || busy) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/posts", {
+      const res = await api("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
@@ -79,9 +80,9 @@ export function Composer({
         value={body}
         onChange={(e) => setBody(takeGraphemes(e.target.value, 500))}
         placeholder="Share a win, a project, a question…"
-        rows={2}
+        rows={3}
         maxLength={1000}
-        className="w-full resize-none bg-transparent text-[15px] leading-6 outline-none placeholder:text-zinc-400"
+        className="w-full resize-none rounded-[2px] border border-zinc-300 bg-zinc-50 p-3 text-[15px] leading-6 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:bg-black dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-600"
       />
       <div className="mt-2 flex items-center justify-between gap-1">
         <div className="flex min-w-0 items-center gap-1">
@@ -100,7 +101,7 @@ export function Composer({
           type="submit"
           disabled={!body.trim() || busy}
           suppressHydrationWarning
-          className="cursor-pointer rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+          className="cursor-pointer rounded-[2px] bg-zinc-900 px-5 py-1.5 text-[13px] font-semibold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
         >
           {busy ? "Posting…" : "Post"}
         </button>

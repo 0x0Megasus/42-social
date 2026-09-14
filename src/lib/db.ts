@@ -5,6 +5,8 @@ import { getRtdb, isRtdbConfigured, rtdb } from "@/lib/fbrdb";
 // so data can never silently fall back to an insecure local store.
 // Public API below is unchanged — routes don't touch the transport.
 
+export type SocialLink = { label: string; url: string };
+
 export type User = {
   id: string;
   email: string;
@@ -15,6 +17,7 @@ export type User = {
   campus: string | null;
   coalition: string | null;
   bio: string;
+  socials: SocialLink[];
   lastSeen: string | null;
   createdAt: string;
 };
@@ -124,6 +127,12 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 function normalize(db: DB): DB {
   for (const u of db.users) {
     if (!("lastSeen" in u)) (u as User).lastSeen = null;
+    if (!Array.isArray((u as User).socials)) (u as User).socials = [];
+    else {
+      (u as User).socials = (u as User).socials
+        .filter((s) => s && typeof s.url === "string" && typeof s.label === "string")
+        .slice(0, 4);
+    }
   }
   for (const p of db.posts) {
     if (!("edited" in p)) (p as Post).edited = false;
@@ -187,6 +196,17 @@ export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
 }
 
 export function uid(prefix = "id"): string {
+  // crypto.randomUUID is collision-proof and timing-safe; keep the readable
+  // prefix so ids stay greppable in RTDB (`p_…`, `c_…`, `m_…`).
+  try {
+    const uuid =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+        : null;
+    if (uuid) return `${prefix}_${uuid}`;
+  } catch {
+    /* fall through to Math.random on very old runtimes */
+  }
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
     .toString(36)
     .slice(2, 8)}`;
@@ -202,6 +222,7 @@ export function userPublic(u: User) {
     campus: u.campus,
     coalition: u.coalition,
     bio: u.bio,
+    socials: Array.isArray(u.socials) ? u.socials : [],
     lastSeen: u.lastSeen ?? null,
   };
 }

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Home, Compass, Bell, LogOut, Mail, Gamepad2 } from "lucide-react";
 import { Avatar } from "@/components/post-card";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import { playMessage, playNotification, unlockAudio } from "@/lib/sound";
 
 type Me = {
@@ -35,7 +36,7 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    api("/api/auth/me")
       .then((r) => r.json())
       .then((d) => setMe(d.user ?? null))
       .catch(() => null);
@@ -47,10 +48,10 @@ export function Navbar() {
     const loadBadges = async () => {
       try {
         const [n, d] = await Promise.all([
-          fetch("/api/notifications").then((r) =>
+          api("/api/notifications").then((r) =>
             r.ok ? r.json() : null
           ),
-          fetch("/api/dm").then((r) => (r.ok ? r.json() : null)),
+          api("/api/dm").then((r) => (r.ok ? r.json() : null)),
         ]);
         if (stop) return;
         if (n) {
@@ -83,6 +84,7 @@ export function Navbar() {
     <Link
       href={href}
       aria-label={label}
+      aria-current={pathname === href ? "page" : undefined}
       className={cn(
         "flex h-10 w-10 items-center justify-center rounded-full transition-colors",
         "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
@@ -97,7 +99,7 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200/70 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-black/70">
-      <nav className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
+      <nav className="mx-auto flex h-14 w-full max-w-xl items-center justify-between px-4 sm:max-w-2xl">
         <Link href="/" className="text-[15px] font-bold tracking-tight">
           42<span className="text-cyan-500">·</span>social
         </Link>
@@ -107,7 +109,8 @@ export function Navbar() {
           {link("/games", "Arcade", Gamepad2)}
           <Link
             href="/dm"
-            aria-label="Messages"
+            aria-label={`Messages${dmUnread > 0 ? `, ${dmUnread} unread` : ""}`}
+            aria-current={pathname.startsWith("/dm") ? "page" : undefined}
             className={cn(
               "relative flex h-10 w-10 items-center justify-center rounded-full transition-colors",
               "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
@@ -118,14 +121,18 @@ export function Navbar() {
           >
             <Mail size={19} strokeWidth={2} />
             {dmUnread > 0 && (
-              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-white">
+              <span
+                aria-hidden
+                className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-white"
+              >
                 {dmUnread > 9 ? "9+" : dmUnread}
               </span>
             )}
           </Link>
           <Link
             href="/notifications"
-            aria-label="Notifications"
+            aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ""}`}
+            aria-current={pathname === "/notifications" ? "page" : undefined}
             className={cn(
               "relative flex h-10 w-10 items-center justify-center rounded-full transition-colors",
               "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900",
@@ -136,7 +143,10 @@ export function Navbar() {
           >
             <Bell size={19} strokeWidth={2} />
             {unread > 0 && (
-              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-white">
+              <span
+                aria-hidden
+                className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-white"
+              >
                 {unread > 9 ? "9+" : unread}
               </span>
             )}

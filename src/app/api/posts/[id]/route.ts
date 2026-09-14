@@ -1,10 +1,33 @@
 import { NextResponse } from "next/server";
-import { updateDB } from "@/lib/db";
+import { readDB, updateDB, userPublic } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+// GET /api/posts/[id] — requires session, returns enriched post
+export async function GET(_req: Request, { params }: Ctx) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const db = await readDB();
+  const p = db.posts.find((x) => x.id === id && !x.deleted);
+  if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const author = db.users.find((u) => u.id === p.authorId);
+  const likes = db.likes.filter((l) => l.postId === id).length;
+  const comments = db.comments.filter((c) => c.postId === id && !c.deleted).length;
+  const liked = db.likes.some((l) => l.postId === id && l.userId === session.sub);
+  const post = {
+    ...p,
+    author: author ? userPublic(author) : null,
+    likes,
+    comments,
+    liked,
+  };
+  return NextResponse.json({ post });
+}
 
 async function ownPost(
   postId: string,
@@ -48,15 +71,25 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json({ post });
 }
 
-// DELETE /api/posts/[id] — tombstone. Readers see "Post deleted".
+// DELETE /api/posts/[id] — hard delete. The post row is removed from the DB
+// together with its likes + comments, so no orphan rows pile up.
+// (Notifications referencing it are kept as history; opening one shows the
+// "no longer available" notice via the feed focus guard.)
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
-  const post = await ownPost(id, session.sub, (p) => {
-    p.deleted = true;
+  const removed = await updateDB((db) => {
+    const idx = db.posts.findIndex((x) => x.id === id);
+    if (idx === -1) return null;
+    const p = db.posts[idx];
+    if (p.authorId !== session.sub || p.deleted) return null;
+    db.posts.splice(idx, 1);
+    db.likes = db.likes.filter((l) => l.postId !== id);
+    db.comments = db.comments.filter((c) => c.postId !== id);
+    return { id };
   });
-  if (!post) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ post });
+  if (!removed) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ ok: true, id });
 }

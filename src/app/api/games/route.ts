@@ -4,12 +4,12 @@ import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import type { GameKind } from "@/lib/games/types";
 
+// Offered in the lobby. "number" + "twentyone" are retired: existing rooms
+// stay playable, but no new rooms can be created for them.
 const KINDS: GameKind[] = [
   "tictactoe",
   "connectfour",
   "rps",
-  "number",
-  "twentyone",
   "chess",
 ];
 

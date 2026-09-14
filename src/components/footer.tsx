@@ -64,8 +64,8 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-zinc-200/70 dark:border-zinc-800">
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-2 px-4 py-6 text-center">
+    <footer className="mt-auto border-t border-zinc-200/70 dark:border-zinc-800">
+      <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-1.5 px-4 py-3 text-center sm:max-w-2xl">
         <p className="flex items-center gap-1.5 text-[13px] text-zinc-500">
           Made with
           <Heart size={13} className="fill-rose-500 text-rose-500" aria-label="love" />

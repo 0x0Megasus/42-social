@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Composer } from "@/components/composer";
 import { PostList } from "@/components/post-list";
+import { api } from "@/lib/api";
 import type { FeedPost } from "@/components/post-card";
 
 export type FeedAuthor = NonNullable<FeedPost["author"]>;
@@ -50,14 +51,16 @@ export function Feed({
   );
 
   const refresh = useCallback(async (mode?: "top" | "new") => {
+    // Timeout-guarded via api() (skill: react-best-practices): polling can
+    // never stick a spinner forever; failures keep the current feed.
     try {
       const s = mode ?? sortRef.current;
-      const res = await fetch(`/api/posts?sort=${s}`, { cache: "no-store" });
+      const res = await api(`/api/posts?sort=${s}`, { cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json();
       if (Array.isArray(d.posts)) setPosts(d.posts);
     } catch {
-      /* offline: keep current feed */
+      /* offline/timeout: keep current feed */
     }
   }, []);
 

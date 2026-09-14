@@ -38,7 +38,7 @@ export function MessageButton({ userId }: { userId: string }) {
     <button
       onClick={open}
       disabled={busy}
-      className="flex items-center gap-1.5 rounded-full border border-zinc-300 px-4 py-1.5 text-[13px] font-semibold text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200"
+      className="flex items-center gap-1.5 rounded-full border border-[#3F3F46] px-4 py-1.5 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-50"
     >
       <MessageCircle size={15} />
       {busy ? "…" : "Message"}

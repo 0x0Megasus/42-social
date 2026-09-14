@@ -3,7 +3,8 @@
 import { cn } from "@/lib/utils";
 import { stripMarkup } from "@/components/rich-text";
 
-// Discord-style reply quote: blurple accent bar + tinted wash.
+// Reply quote: brand-cyan accent bar + tinted wash (matches the reply-to bar
+// in post comments and DM threads — one accent language everywhere).
 export function Quote({
   name,
   body,
@@ -17,7 +18,7 @@ export function Quote({
 }) {
   const inner = (
     <>
-      <span className="block truncate text-[11px] font-bold text-[#5865F2]">
+      <span className="block truncate text-[11px] font-bold text-cyan-700 dark:text-cyan-300">
         {mine ? `${name} (you)` : name}
       </span>
       <span className="block truncate text-[12px] text-zinc-500 dark:text-zinc-400">
@@ -27,7 +28,7 @@ export function Quote({
   );
   if (!onJump) {
     return (
-      <span className="mb-1 block rounded border-l-2 border-[#5865F2] bg-[#5865F2]/10 px-2 py-1">
+      <span className="mb-1 block rounded border-l-2 border-cyan-500 bg-cyan-500/10 px-2 py-1">
         {inner}
       </span>
     );
@@ -37,9 +38,9 @@ export function Quote({
       onClick={onJump}
       title="Jump to original"
       className={cn(
-        "mb-1 block w-full rounded border-l-2 border-[#5865F2]",
-        "bg-[#5865F2]/10 px-2 py-1 text-left",
-        "transition-colors hover:bg-[#5865F2]/20"
+        "mb-1 block w-full rounded border-l-2 border-cyan-500",
+        "bg-cyan-500/10 px-2 py-1 text-left",
+        "transition-colors hover:bg-cyan-500/20"
       )}
     >
       {inner}

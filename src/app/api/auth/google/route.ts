@@ -81,6 +81,7 @@ export async function POST(req: Request) {
       campus: null,
       coalition: null,
       bio: "",
+      socials: [],
       lastSeen: null as string | null,
       createdAt: new Date().toISOString(),
     };

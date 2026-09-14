@@ -108,12 +108,12 @@ export function NumberBoardView({
           placeholder="1–100"
           inputMode="numeric"
           disabled={!interactive}
-          className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 bg-transparent px-3 text-center text-lg font-bold outline-none focus:border-cyan-500 disabled:opacity-40 dark:border-zinc-700"
+          className="h-11 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 text-center text-lg font-bold text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B] disabled:opacity-40"
         />
         <button
           type="submit"
           disabled={!interactive || !val}
-          className="h-11 shrink-0 rounded-xl bg-zinc-900 px-5 text-[14px] font-semibold text-white disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+          className="h-11 shrink-0 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
         >
           Guess
         </button>
@@ -198,14 +198,14 @@ export function TwentyOneBoardView({
           <button
             onClick={onHit}
             disabled={!interactive}
-            className="rounded-xl bg-zinc-900 py-2.5 text-[14px] font-semibold text-white disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+            className="rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
           >
             Hit
           </button>
           <button
             onClick={onStand}
             disabled={!interactive}
-            className="rounded-xl border border-zinc-300 py-2.5 text-[14px] font-semibold disabled:opacity-30 dark:border-zinc-700"
+            className="rounded-xl border border-[#3F3F46] py-2.5 text-[14px] font-semibold text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-30"
           >
             Stand
           </button>

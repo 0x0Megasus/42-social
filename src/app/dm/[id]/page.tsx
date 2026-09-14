@@ -25,6 +25,7 @@ export default async function DmChat({
   }
   const peerId = convo.aId === session.sub ? convo.bId : convo.aId;
   const peer = db.users.find((u) => u.id === peerId);
+  const me = db.users.find((u) => u.id === session.sub);
   const pub = peer ? userPublic(peer) : null;
   const handle = pub?.login42 ?? pub?.name ?? "?";
   const peerOnline = peer
@@ -32,7 +33,8 @@ export default async function DmChat({
     : false;
 
   return (
-    <div className="flex h-[calc(100dvh-10rem)] min-h-[20rem] flex-col overflow-hidden">
+    // Break out of the global max-w-xl shell so the chat gets real room.
+    <div className="relative left-1/2 flex h-[calc(100dvh-10rem)] min-h-[20rem] w-[min(56rem,calc(100vw-2rem))] max-w-none -translate-x-1/2 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-2 px-1 pb-3">
         <Link
           href="/dm"
@@ -78,6 +80,9 @@ export default async function DmChat({
         peerName={pub?.name ?? "Unknown"}
         peerId={peer?.id ?? ""}
         myId={session.sub}
+        peerAvatar={pub?.avatar ?? null}
+        myName={me?.name ?? "You"}
+        myAvatar={me?.avatar ?? null}
       />
     </div>
   );

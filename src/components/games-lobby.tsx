@@ -10,12 +10,12 @@ import { timeAgo } from "@/lib/format";
 import { GAME_LABEL, type GameKind, type GameView } from "@/lib/games/types";
 
 const GAMES: { kind: GameKind; blurb: string; emoji: string }[] = [
-  { kind: "tictactoe", blurb: "Three in a row. Fast and ruthless.", emoji: "⭕" },
-  { kind: "connectfour", blurb: "Drop discs, connect four.", emoji: "🔴" },
-  { kind: "rps", blurb: "Best of 5 — bluff, read, strike.", emoji: "✊" },
-  { kind: "number", blurb: "Guess 1–100 in the fewest tries.", emoji: "🔢" },
-  { kind: "twentyone", blurb: "Hit or stand, closest to 21.", emoji: "🃏" },
   { kind: "chess", blurb: "The royal game. Full rules.", emoji: "♟️" },
+  { kind: "connectfour", blurb: "Drop discs, connect four.", emoji: "🔴" },
+  { kind: "tictactoe", blurb: "Three in a row. Fast and ruthless.", emoji: "⭕" },
+  { kind: "rps", blurb: "Best of 5 — bluff, read, strike.", emoji: "✊" },
+  // Retired: "number" + "twentyone" stay playable via existing rooms/engines
+  // but are no longer offered — see POST /api/games.
 ];
 
 export function GamesLobby({
@@ -92,7 +92,7 @@ export function GamesLobby({
             <button
               onClick={() => create(g.kind)}
               disabled={creating !== null}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-zinc-900 py-2.5 text-[14px] font-semibold text-white disabled:opacity-70 dark:bg-zinc-50 dark:text-zinc-900"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
             >
               {creating === g.kind ? (
                 <>
@@ -123,12 +123,12 @@ export function GamesLobby({
           placeholder="Code or invite link — e.g. K7Q2XD"
           maxLength={200}
           autoComplete="off"
-          className="h-10 min-w-0 flex-1 rounded-xl border border-zinc-200 bg-transparent px-3 font-mono text-[14px] uppercase tracking-widest outline-none focus:border-cyan-500 dark:border-zinc-700"
+          className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 font-mono text-[14px] uppercase tracking-widest text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
         <button
           type="submit"
           disabled={joining}
-          className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-zinc-900 px-4 text-[14px] font-semibold text-white disabled:opacity-70 dark:bg-zinc-50 dark:text-zinc-900"
+          className="flex h-10 shrink-0 items-center gap-1.5 rounded-[2px] bg-[#FAFAFA] px-4 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
         >
           {joining ? (
             <LoaderCircle size={15} className="animate-spin" />

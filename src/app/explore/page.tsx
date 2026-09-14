@@ -20,7 +20,7 @@ export default async function Explore() {
       login42: pub.login42,
       avatar: pub.avatar,
       campus: pub.campus,
-      posts: db.posts.filter((p) => p.authorId === u.id).length,
+      posts: db.posts.filter((p) => p.authorId === u.id && !p.deleted).length,
       followers: db.follows.filter((f) => f.followingId === u.id).length,
       online: isOnlineAt(beats.get(u.id)),
       following: following.has(u.id),

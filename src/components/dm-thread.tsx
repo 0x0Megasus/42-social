@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Check, X, Reply, ArrowDown } from "lucide-react";
 import { toast } from "sonner";
-import { EmojiPicker } from "@/components/emoji-picker";
-import { Quote } from "@/components/quote";
+import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { renderRich, stripMarkup } from "@/components/rich-text";
-import { FormatBar } from "@/components/format-bar";
+import { Avatar } from "@/components/post-card";
+import { ChatSkeleton } from "@/components/skeletons";
 import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { timeAgo } from "@/lib/format";
 import { playMessage } from "@/lib/sound";
@@ -26,16 +27,35 @@ type Msg = {
   createdAt: string;
 };
 
+// Discord-inspired palette (own identity, same principles) — black chat theme
+const C = {
+  bg: "bg-black",
+  text: "text-[#DBDEE1]",
+  username: "text-[#F2F3F5]",
+  time: "text-[#949BA4]",
+  hover: "hover:bg-[#1e1f22]",
+  accent: "#5865F2",
+  danger: "#ED4245",
+} as const;
+
+const GROUP_GAP_MS = 5 * 60_000;
+
 export function DmThread({
   convoId,
   peerName,
   peerId,
   myId,
+  peerAvatar = null,
+  myName = "You",
+  myAvatar = null,
 }: {
   convoId: string;
   peerName: string;
   peerId: string;
   myId: string;
+  peerAvatar?: string | null;
+  myName?: string;
+  myAvatar?: string | null;
 }) {
   const router = useRouter();
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -130,8 +150,8 @@ export function DmThread({
   }, [load]);
 
   async function send(text: string) {
-    const clean = text.trim();
-    if (!clean || busy) return;
+    const cleanText = text.trim();
+    if (!cleanText || busy) return;
     setBusy(true);
     const replySnap: QuotedReply = replyTo
       ? {
@@ -146,7 +166,7 @@ export function DmThread({
       : null;
     const temp: Msg = {
       id: `tmp-${Date.now()}`,
-      body: clean,
+      body: cleanText,
       kind: "text",
       mine: true,
       read: false,
@@ -164,7 +184,7 @@ export function DmThread({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          body: clean,
+          body: cleanText,
           replyToId: replySnap?.id.startsWith("tmp-") ? undefined : replySnap?.id,
         }),
       });
@@ -254,161 +274,115 @@ export function DmThread({
     .filter((i) => i >= 0)
     .pop();
 
+  function displayName(m: Msg) {
+    return m.mine ? myName : peerName;
+  }
+
+  function profileHref(m: Msg) {
+    return `/profile/${encodeURIComponent(m.mine ? myId : peerId)}`;
+  }
+
+  function avatarFor(m: Msg) {
+    const node = m.mine ? (
+      <Avatar name={myName} src={myAvatar} size={40} />
+    ) : (
+      <Avatar name={peerName} src={peerAvatar} size={40} />
+    );
+    return (
+      <Link
+        href={profileHref(m)}
+        aria-label={`View ${displayName(m)}'s profile`}
+        className="block rounded-full transition-opacity hover:opacity-80"
+      >
+        {node}
+      </Link>
+    );
+  }
+
+  // Group consecutive messages from the same author (5-min window),
+  // broken by deletes / stickers / replies — Discord-style compact flow.
+  function groupedWithPrev(idx: number): boolean {
+    if (idx === 0) return false;
+    const prev = msgs[idx - 1];
+    const cur = msgs[idx];
+    if (prev.deleted || cur.deleted) return false;
+    if (prev.kind === "sticker" || cur.kind === "sticker") return false;
+    if (cur.replyTo) return false;
+    if (prev.mine !== cur.mine) return false;
+    const gap =
+      new Date(cur.createdAt).getTime() - new Date(prev.createdAt).getTime();
+    return gap >= 0 && gap < GROUP_GAP_MS;
+  }
+
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-      {/* internal scroll only — reserved gutter so layout never shifts */}
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-[#2E3035]",
+        C.bg,
+        C.text
+      )}
+    >
       <div
         ref={scrollRef}
         onScroll={onThreadScroll}
-        className="relative min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-3"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2 pt-5 [scrollbar-gutter:stable]"
       >
         {loading ? (
-          <div role="status" aria-label="Loading messages" className="space-y-1.5">
-            <div className="h-10 w-2/3 animate-pulse rounded-2xl rounded-bl-md bg-zinc-200 dark:bg-zinc-800" />
-            <div className="ml-auto h-10 w-1/2 animate-pulse rounded-2xl rounded-br-md bg-zinc-200 dark:bg-zinc-800" />
-            <div className="h-14 w-3/5 animate-pulse rounded-2xl rounded-bl-md bg-zinc-200 dark:bg-zinc-800" />
-          </div>
+          <ChatSkeleton rows={4} label="Loading messages" density="dm" />
         ) : (
           <>
             {msgs.length === 0 && (
-              <p className="py-8 text-center text-[13px] text-zinc-400">
+              <p className="px-4 py-8 text-center text-[13px] text-[#949BA4]">
                 No messages yet — say hi.
               </p>
             )}
             {msgs.map((m, i) => {
-          if (m.deleted) {
-            return (
-              <div
-                key={m.id}
-                className={cn("flex", m.mine ? "justify-end" : "justify-start")}
-              >
-                <p className="rounded-2xl bg-zinc-100/70 px-3 py-2 text-[13px] italic text-zinc-400 dark:bg-zinc-900/70">
-                  {m.mine ? "You deleted this message" : "Message deleted"}
-                </p>
-              </div>
-            );
-          }
-          if (m.kind === "sticker") {
-            return (
-              <div
-                key={m.id}
-                className={cn("flex", m.mine ? "justify-end" : "justify-start")}
-              >
-                <span className="text-5xl leading-none">{m.body}</span>
-              </div>
-            );
-          }
-          const isEditing = editingId === m.id;
-          return (
-            <div
-              key={m.id}
-              id={`dm-msg-${m.id}`}
-              className={cn(
-                "group flex scroll-mt-2 rounded-lg px-1 py-0.5",
-                m.mine ? "justify-end" : "justify-start",
-                flashId === m.id && "bg-orange-200/70 dark:bg-orange-500/15"
-              )}
-            >
-              <div
-                className={cn(
-                  "max-w-[75%] rounded-2xl px-3 py-2 text-[14.5px] leading-6 shadow-sm",
-                  m.mine
-                    ? "rounded-br-md bg-zinc-950 text-white ring-1 ring-zinc-800 dark:bg-black dark:text-zinc-100 dark:ring-zinc-700"
-                    : "rounded-bl-md border border-zinc-200/70 bg-zinc-100 text-zinc-900 dark:border-zinc-700/60 dark:bg-zinc-900 dark:text-zinc-50"
-                )}
-              >
-                {m.replyTo && !isEditing && (
-                  <Quote
-                    name={
-                      m.replyTo.senderId === myId ? "You" : peerName
-                    }
-                    body={m.replyTo.body}
-                    mine={m.replyTo.senderId === myId}
-                    onJump={() => jumpTo(m.replyTo!.id)}
-                  />
-                )}
-                {isEditing ? (
-                  <span className="block">
-                    <textarea
-                      value={editDraft}
-                      onChange={(e) => setEditDraft(e.target.value)}
-                      rows={2}
-                      maxLength={500}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          saveEdit(m.id);
-                        }
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                      className="w-full resize-none rounded-lg bg-white/15 px-2 py-1 text-[14px] outline-none dark:bg-white/10"
-                    />
-                    <span className="mt-1 flex justify-end gap-1">
-                      <button
-                        onClick={() => saveEdit(m.id)}
-                        aria-label="Save edit"
-                        className="rounded-full p-1.5 hover:bg-black/10 dark:hover:bg-white/10"
-                      >
-                        <Check size={15} />
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        aria-label="Cancel edit"
-                        className="rounded-full p-1.5 hover:bg-black/10 dark:hover:bg-white/10"
-                      >
-                        <X size={15} />
-                      </button>
-                    </span>
-                  </span>
-                ) : (
-                  <>
-                    <p className="whitespace-pre-wrap break-words">{renderRich(m.body)}</p>
-                    <p
-                      className={cn(
-                        "mt-0.5 flex items-center justify-end gap-1 text-[10px]",
-                        m.mine ? "text-white/60" : "text-zinc-400"
-                      )}
-                    >
-                      {m.edited && <span>Edited · </span>}
-                      {timeAgo(m.createdAt)}
-                      {m.mine && i === lastMineIdx && m.read ? " · Seen" : ""}
+              if (m.deleted) {
+                return (
+                  <div
+                    key={m.id}
+                    className={cn("px-4 py-0.5", C.hover)}
+                  >
+                    <p className="ml-[52px] py-0.5 text-[13px] italic text-[#949BA4]">
+                      {m.mine ? "You deleted this message" : "Message deleted"}
                     </p>
-                  </>
-                )}
-              </div>
-              {!isEditing && !m.id.startsWith("tmp-") && (
-                <span className="flex flex-col justify-center gap-0.5 pl-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
+                  </div>
+                );
+              }
+
+              const isEditing = editingId === m.id;
+              const isTemp = m.id.startsWith("tmp-");
+              const compact = groupedWithPrev(i);
+              const fullTime = new Date(m.createdAt).toLocaleString();
+              const replyName =
+                m.replyTo?.senderId === myId
+                  ? myName
+                  : m.replyTo?.senderId === peerId
+                    ? peerName
+                    : (m.replyTo?.name ?? "?");
+              const armingDelete = confirmDeleteId === m.id;
+
+              const toolbar = !isEditing && !isTemp && (
+                <span
+                  role="toolbar"
+                  aria-label="Message actions"
+                  className={cn(
+                    "absolute right-3 top-0 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-[#1e1f22] bg-[#111214] p-0.5 shadow-md",
+                    "translate-y-1 opacity-0 transition-all duration-150",
+                    "group-hover:translate-y-[-50%] group-hover:opacity-100",
+                    "group-focus-within:translate-y-[-50%] group-focus-within:opacity-100",
+                    "[@media(hover:none)]:translate-y-[-50%] [@media(hover:none)]:opacity-100"
+                  )}
+                >
                   <button
                     onClick={() => startReply(m)}
                     aria-label="Reply to message"
                     title="Reply"
-                    className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                    className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-white/10 hover:text-[#F2F3F5]"
                   >
-                    <Reply size={14} />
+                    <Reply size={15} className="h-3 w-3 sm:h-[15px] sm:w-[15px]" />
                   </button>
-                  {m.mine && (
-                    <>
-                      {confirmDeleteId === m.id ? (
-                    <>
-                      <button
-                        onClick={() => remove(m.id)}
-                        aria-label="Confirm delete"
-                        title="Confirm delete"
-                        className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        aria-label="Cancel delete"
-                        title="Cancel"
-                        className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
-                  ) : (
+                  {m.mine && !armingDelete && (
                     <>
                       <button
                         onClick={() => {
@@ -418,73 +392,328 @@ export function DmThread({
                         }}
                         aria-label="Edit message"
                         title="Edit"
-                        className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                        className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-white/10 hover:text-[#5865F2]"
                       >
-                        <Pencil size={14} />
+                        <Pencil size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(m.id)}
                         aria-label="Delete message"
                         title="Delete"
-                        className="rounded-full p-1.5 text-zinc-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/40"
+                        className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-[#ED4245] hover:text-white"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                       </button>
                     </>
                   )}
-                  </>
-                )}
+                  {m.mine && armingDelete && (
+                    <>
+                      <button
+                        onClick={() => remove(m.id)}
+                        aria-label="Confirm delete"
+                        title="Confirm delete"
+                        className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 bg-[#ED4245] text-white transition-colors hover:brightness-110"
+                      >
+                        <Check size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        aria-label="Cancel delete"
+                        title="Cancel"
+                        className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-white/10 hover:text-[#F2F3F5]"
+                      >
+                        <X size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                      </button>
+                    </>
+                  )}
                 </span>
-              )}
-            </div>
-          );
-        })}
+              );
+
+              const replyPreview = m.replyTo && !isEditing && (
+                <button
+                  onClick={() => jumpTo(m.replyTo!.id)}
+                  title="Jump to original"
+                  className="group/reply mb-0.5 flex max-w-full items-center gap-1.5 text-left"
+                >
+                  <span
+                    aria-hidden
+                    className="ml-[21px] h-[10px] w-[31px] shrink-0 rounded-tl-md border-l-2 border-t-2 border-[#4E5058]"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[12px] leading-4">
+                    <span className="font-semibold text-[#5865F2]">
+                      {replyName}
+                    </span>{" "}
+                    <span className="text-[#949BA4]">
+                      {m.replyTo.body === "Sticker"
+                        ? "Sticker"
+                        : stripMarkup(m.replyTo.body).slice(0, 120)}
+                    </span>
+                  </span>
+                </button>
+              );
+
+              const seen =
+                m.mine && i === lastMineIdx && m.read ? (
+                  <span className="ml-1 text-[11px] text-[#949BA4]">· Seen</span>
+                ) : null;
+
+              // Sticker: header row + big glyph, no bubble
+              if (m.kind === "sticker") {
+                return (
+                  <div
+                    key={m.id}
+                    id={`dm-msg-${m.id}`}
+                    className={cn(
+                      "group relative scroll-mt-2 px-4",
+                      compact ? "py-0.5" : "pb-0.5 pt-2",
+                      C.hover,
+                      flashId === m.id && "bg-amber-300/20"
+                    )}
+                  >
+                    {toolbar}
+                    <div className="flex gap-3">
+                      <span className="w-10 shrink-0">
+                        {!compact && avatarFor(m)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {!compact && (
+                          <p className="flex flex-wrap items-baseline gap-x-2">
+                            <Link
+                              href={profileHref(m)}
+                              title={`View ${displayName(m)}'s profile`}
+                              className="text-[14px] font-semibold leading-5 transition-colors hover:underline"
+                              style={{ color: kickColor(displayName(m)) }}
+                            >
+                              {displayName(m)}
+                            </Link>
+                            <span
+                              title={fullTime}
+                              className={cn(
+                                "text-[11px] font-medium leading-4",
+                                C.time
+                              )}
+                            >
+                              {timeAgo(m.createdAt)}
+                            </span>
+                            {seen}
+                          </p>
+                        )}
+                        <span className="mt-0.5 block text-5xl leading-none">
+                          {m.body}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Compact follow-up: hover-revealed timestamp gutter, no avatar
+              if (compact) {
+                return (
+                  <div
+                    key={m.id}
+                    id={`dm-msg-${m.id}`}
+                    className={cn(
+                      "group relative scroll-mt-2 px-4 py-[3px]",
+                      C.hover,
+                      flashId === m.id && "bg-amber-300/20"
+                    )}
+                  >
+                    {toolbar}
+                    <div className="flex items-baseline gap-3">
+                      <span
+                        title={fullTime}
+                        className="w-10 shrink-0 select-none text-right text-[10px] tabular-nums text-transparent transition-colors group-hover:text-[#949BA4]"
+                        aria-hidden
+                      >
+                        {new Date(m.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <div className="min-w-0 flex-1 text-[15px] leading-[22px] text-[#DBDEE1]">
+                        {isEditing ? (
+                          <span className="block">
+                            <textarea
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              rows={2}
+                              maxLength={500}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  saveEdit(m.id);
+                                }
+                                if (e.key === "Escape") setEditingId(null);
+                              }}
+                              className="w-full resize-none rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 py-2 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+                            />
+                            <span className="mt-1 flex gap-1 text-[12px]">
+                              <button
+                                onClick={() => saveEdit(m.id)}
+                                className="rounded-full bg-[#FAFAFA] px-3 py-1 text-[#18181B] hover:bg-[#E4E4E7]"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditingId(null)}
+                                className="rounded-full border border-[#3F3F46] px-3 py-1 text-[#E4E4E7] hover:bg-[#18181B]"
+                              >
+                                Cancel
+                              </button>
+                              <span className="py-0.5 text-[#949BA4]">
+                                Enter to save · Esc to cancel
+                              </span>
+                            </span>
+                          </span>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">
+                            {renderRich(m.body)}
+                            {m.edited && (
+                              <span className="ml-1 align-baseline text-[11px] text-[#949BA4]">
+                                (edited)
+                              </span>
+                            )}
+                            {seen}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Full row: avatar + username/timestamp header + content
+              return (
+                <div
+                  key={m.id}
+                  id={`dm-msg-${m.id}`}
+                  className={cn(
+                    "group relative scroll-mt-2 px-4 pb-0.5 pt-2",
+                    C.hover,
+                    flashId === m.id && "bg-amber-300/20"
+                  )}
+                >
+                  {toolbar}
+                  {replyPreview}
+                  <div className="flex gap-3">
+                    <span className="shrink-0 pt-0.5">{avatarFor(m)}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-baseline gap-x-2">
+                        <Link
+                          href={profileHref(m)}
+                          title={`View ${displayName(m)}'s profile`}
+                          className="text-[14px] font-semibold leading-5 transition-colors hover:underline"
+                          style={{ color: kickColor(displayName(m)) }}
+                        >
+                          {displayName(m)}
+                        </Link>
+                        <span
+                          title={fullTime}
+                          className={cn(
+                            "text-[11px] font-medium leading-4",
+                            C.time
+                          )}
+                        >
+                          {timeAgo(m.createdAt)}
+                        </span>
+                        {seen}
+                      </p>
+                      {isEditing ? (
+                        <span className="mt-1 block">
+                          <textarea
+                            value={editDraft}
+                            onChange={(e) => setEditDraft(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                saveEdit(m.id);
+                              }
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                            className="w-full resize-none rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 py-2 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+                          />
+                          <span className="mt-1 flex gap-1 text-[12px]">
+                            <button
+                              onClick={() => saveEdit(m.id)}
+                              className="rounded-[2px] bg-[#FAFAFA] px-3 py-1 text-[#18181B] hover:bg-[#E4E4E7]"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="rounded-[2px] border border-[#3F3F46] px-3 py-1 text-[#E4E4E7] hover:bg-[#18181B]"
+                            >
+                              Cancel
+                            </button>
+                            <span className="py-0.5 text-[#949BA4]">
+                              Enter to save · Esc to cancel
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px] text-[#DBDEE1]">
+                          {renderRich(m.body)}
+                          {m.edited && (
+                            <span className="ml-1 align-baseline text-[11px] text-[#949BA4]">
+                              (edited)
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
         <div aria-hidden className="h-0" />
       </div>
-      {hasNew && !atBottom && (
+
+      {!atBottom && (
         <button
           onClick={() => scrollToBottom()}
           aria-label="Scroll to new messages"
-          className="absolute bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white shadow-lg transition-opacity hover:opacity-85 dark:bg-zinc-50 dark:text-zinc-900"
+          className="absolute bottom-20 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full bg-[#5865F2] text-white shadow-lg transition-opacity hover:brightness-110"
         >
-          <ArrowDown size={13} /> New messages
+          <ArrowDown size={16} />
         </button>
       )}
+
       {replyTo && (
-        <div className="flex shrink-0 items-center gap-2 border-t border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+        <div className="flex shrink-0 items-center gap-2 border-t border-[#1e1f22] bg-black px-4 py-1.5">
           <span className="min-w-0 flex-1 truncate rounded border-l-2 border-[#5865F2] bg-[#5865F2]/10 px-2 py-1 text-xs">
             <b className="text-[#5865F2]">
               Replying to {replyTo.mine ? "yourself" : peerName}
             </b>{" "}
-            <span className="text-zinc-500 dark:text-zinc-400">
+            <span className="text-[#949BA4]">
               {replyTo.kind === "sticker" ? "Sticker" : stripMarkup(replyTo.body)}
             </span>
           </span>
           <button
             onClick={() => setReplyTo(null)}
             aria-label="Cancel reply"
-            className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className="rounded-full p-1.5 text-[#949BA4] transition-colors hover:bg-white/10 hover:text-[#DBDEE1]"
           >
             <X size={14} />
           </button>
         </div>
       )}
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
           send(draft);
         }}
-        className="flex shrink-0 items-center gap-1 border-t border-zinc-200 p-2 dark:border-zinc-800"
+        className="flex shrink-0 items-center gap-1 border-t border-[#1e1f22] bg-black p-2"
       >
         <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 500))} />
-        <FormatBar
-          targetRef={dmInputRef}
-          value={draft}
-          onChange={(v) => setDraft(takeGraphemes(v, 500))}
-          max={500}
-        />
+
         <label htmlFor="dm-input" className="sr-only">
           Message
         </label>
@@ -493,19 +722,19 @@ export function DmThread({
           id="dm-input"
           value={draft}
           onChange={(e) => setDraft(takeGraphemes(e.target.value, 500))}
-          placeholder="Message…"
+          placeholder={`Message ${peerName}`}
           maxLength={1000}
           autoComplete="off"
-          className="h-10 min-w-0 flex-1 rounded-full border border-zinc-200 bg-transparent px-4 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
+          className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
-        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
+        <span className="shrink-0 text-[11px] tabular-nums text-[#949BA4]">
           {graphemeLen(draft)}/500
         </span>
         <button
           type="submit"
           disabled={!draft.trim() || busy}
           suppressHydrationWarning
-          className="h-10 rounded-full bg-zinc-900 px-5 text-[14px] font-semibold text-white disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+          className="h-10 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
         >
           Send
         </button>

@@ -51,8 +51,8 @@ export function FollowButton({
       onClick={toggle}
       className={
         following
-          ? "rounded-full border border-zinc-300 px-4 py-1.5 text-[13px] font-semibold text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
-          : "rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white hover:opacity-80 dark:bg-zinc-50 dark:text-zinc-900"
+          ? "rounded-full border border-[#3F3F46] px-4 py-1.5 text-[13px] font-semibold text-[#E4E4E7]"
+          : "rounded-full bg-[#FAFAFA] px-4 py-1.5 text-[13px] font-semibold text-[#18181B] hover:bg-[#E4E4E7]"
       }
     >
       {following ? "Following" : "Follow"}
@@ -142,7 +142,7 @@ export function AuthButtons() {
         <a
           href="/api/auth/42"
           onClick={() => setBusy("42")}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 text-[14px] font-semibold text-white transition-opacity hover:opacity-85 dark:bg-cyan-500 dark:text-black"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FAFAFA] text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] transition-opacity disabled:opacity-50"
         >
           {busy === "42" ? "Redirecting…" : "Continue with 42 Intra"}
         </a>

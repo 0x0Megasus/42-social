@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { Avatar } from "@/components/post-card";
+import { DmRowSkeleton } from "@/components/skeletons";
 import { timeAgo } from "@/lib/format";
 import { stripMarkup } from "@/components/rich-text";
 import { MessageButton } from "@/components/message-button";
@@ -80,13 +81,7 @@ export function DmList({ meId }: { meId: string }) {
       <h1 className="px-1 text-lg font-bold tracking-tight">Messages</h1>
       {loading ? (
         <div className="space-y-3" role="status" aria-label="Loading messages">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              aria-hidden
-              className="h-16 animate-pulse rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
-            />
-          ))}
+          <DmRowSkeleton count={3} />
         </div>
       ) : (
         <>

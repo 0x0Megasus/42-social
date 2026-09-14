@@ -58,6 +58,7 @@ export async function GET(req: Request) {
         campus,
         coalition,
         bio: "",
+        socials: [],
         lastSeen: null as string | null,
         createdAt: new Date().toISOString(),
       };

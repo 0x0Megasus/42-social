@@ -1,20 +1,33 @@
+import { ChatSkeleton } from "@/components/skeletons";
+
+// Mirrors DmChat: header (back + avatar 36 + name/presence) → thread panel →
+// composer bar. Same breakout width + height as the real page.
 export default function Loading() {
   return (
-    <div className="space-y-3" role="status" aria-label="Loading conversation">
-      <div className="flex items-center gap-2 px-1">
-        <div className="h-9 w-9 animate-pulse rounded-full bg-zinc-200 dark:bg-zinc-800" />
-        <div className="space-y-1.5">
-          <div className="h-4 w-28 animate-pulse rounded-md bg-zinc-200 dark:bg-zinc-800" />
-          <div className="h-3 w-20 animate-pulse rounded-md bg-zinc-200 dark:bg-zinc-800" />
-        </div>
-      </div>
+    <div className="relative left-1/2 flex h-[calc(100dvh-10rem)] min-h-[20rem] w-[min(56rem,calc(100vw-2rem))] max-w-none -translate-x-1/2 flex-col overflow-hidden">
       <div
         aria-hidden
-        className="flex h-[calc(100dvh-10rem)] min-h-[20rem] flex-col justify-end gap-2 rounded-2xl border border-zinc-200 p-3 dark:border-zinc-800"
+        className="flex shrink-0 items-center gap-2 px-1 pb-3"
       >
-        <div className="h-10 w-2/3 animate-pulse self-start rounded-2xl rounded-bl-md bg-zinc-200 dark:bg-zinc-800" />
-        <div className="h-10 w-1/2 animate-pulse self-end rounded-2xl rounded-br-md bg-zinc-200 dark:bg-zinc-800" />
-        <div className="h-14 w-3/5 animate-pulse self-start rounded-2xl rounded-bl-md bg-zinc-200 dark:bg-zinc-800" />
+        <div className="h-9 w-9 rounded-full bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+        <div className="h-9 w-9 rounded-full bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+        <div className="min-w-0 space-y-1.5">
+          <div className="h-4 w-28 rounded-md bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+          <div className="h-3 w-20 rounded-md bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800">
+        <div className="min-h-0 flex-1 overflow-hidden pt-5">
+          <ChatSkeleton rows={4} label="Loading conversation" density="dm" />
+        </div>
+        <div
+          aria-hidden
+          className="flex shrink-0 items-center gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800"
+        >
+          <div className="h-10 w-10 shrink-0 rounded-full bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+          <div className="h-10 min-w-0 flex-1 rounded-full bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+          <div className="h-10 w-16 shrink-0 rounded-full bg-zinc-200 motion-safe:animate-pulse dark:bg-zinc-800" />
+        </div>
       </div>
     </div>
   );

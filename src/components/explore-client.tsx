@@ -52,7 +52,7 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
           placeholder="Search for a student.."
           autoComplete="off"
           maxLength={60}
-          className="h-11 w-full rounded-2xl border border-zinc-200 bg-white pl-10 pr-9 text-[14px] outline-none placeholder:text-zinc-400 focus:border-cyan-500 dark:border-zinc-800 dark:bg-zinc-950"
+          className="h-11 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] pl-10 pr-9 text-[14px] text-[#F4F4F5] outline-none placeholder:text-[#71717A] focus:border-[#52525B]"
         />
         {q && (
           <button

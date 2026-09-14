@@ -3,11 +3,28 @@
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Design tokens (skill: tailwind-design-system) — single brand accent,
+     semantic surfaces, one radius scale. Components must use these via
+     `dark:` variants, never raw hex, so light mode never breaks. */
+  --color-brand: #06b6d4;
+  --color-brand-strong: #0891b2;
 }
 
 /* Calm minimal base — skill: frontend-design-systems (restraint, spacing rhythm) */
 html {
   scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {

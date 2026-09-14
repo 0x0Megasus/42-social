@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 
 const COOKIE = "session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7d
+const ISSUER = "42-social";
+const AUDIENCE = "42-social-web";
 
 function secret(): Uint8Array {
   // Fail closed: never sign sessions with a guessable fallback in production.
@@ -26,6 +28,8 @@ export async function createSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(`${MAX_AGE}s`)
     .sign(secret());
@@ -52,7 +56,17 @@ export async function getSession(): Promise<SessionPayload | null> {
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    // Strict first (issuer + audience), then lenient for pre-hardening tokens
+    // so existing logins survive the upgrade instead of a mass logout.
+    let payload;
+    try {
+      ({ payload } = await jwtVerify(token, secret(), {
+        issuer: ISSUER,
+        audience: AUDIENCE,
+      }));
+    } catch {
+      ({ payload } = await jwtVerify(token, secret()));
+    }
     return {
       sub: String(payload.sub),
       email: String(payload.email ?? ""),

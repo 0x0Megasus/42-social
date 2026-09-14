@@ -9,8 +9,13 @@ export async function GET(req: Request) {
   const db = await readDB();
   const session = await getSession();
   const byId = new Map(db.users.map((u) => [u.id, u]));
+  // Same single-pass aggregation as src/app/page.tsx — keep them in sync.
   const likeCount = new Map<string, number>();
-  for (const l of db.likes) likeCount.set(l.postId, (likeCount.get(l.postId) ?? 0) + 1);
+  const likedIds = new Set<string>();
+  for (const l of db.likes) {
+    likeCount.set(l.postId, (likeCount.get(l.postId) ?? 0) + 1);
+    if (session && l.userId === session.sub) likedIds.add(l.postId);
+  }
   const commentCount = new Map<string, number>();
   for (const c of db.comments)
     if (!c.deleted) commentCount.set(c.postId, (commentCount.get(c.postId) ?? 0) + 1);
@@ -23,15 +28,13 @@ export async function GET(req: Request) {
         author: author ? userPublic(author) : null,
         likes: likeCount.get(p.id) ?? 0,
         comments: commentCount.get(p.id) ?? 0,
-        liked: session
-          ? db.likes.some((l) => l.postId === p.id && l.userId === session.sub)
-          : false,
+        liked: session ? likedIds.has(p.id) : false,
       };
     });
   const sort = new URL(req.url).searchParams.get("sort");
   const ordered =
     sort === "new"
-      ? enriched.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      ? enriched.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
       : rankFeed(
           enriched,
           session?.sub ?? null,
@@ -41,7 +44,10 @@ export async function GET(req: Request) {
                 .map((f) => f.followingId)
             : []
         );
-  return NextResponse.json({ posts: ordered.slice(0, 50) });
+  return NextResponse.json(
+    { posts: ordered.slice(0, 50) },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function POST(req: Request) {

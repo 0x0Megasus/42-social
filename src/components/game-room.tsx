@@ -184,8 +184,8 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
     }
     return (
       <div className="space-y-3" role="status" aria-label="Loading game">
-        <div className="h-36 animate-pulse rounded-2xl border border-zinc-200 dark:border-zinc-800" />
-        <div className="mx-auto aspect-square w-full max-w-sm animate-pulse rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+        <div aria-hidden className="h-36 motion-safe:animate-pulse rounded-2xl border border-zinc-200 dark:border-zinc-800" />
+        <div aria-hidden className="mx-auto aspect-square w-full max-w-sm motion-safe:animate-pulse rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
       </div>
     );
   }
@@ -358,7 +358,7 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
           <button
             onClick={() => act("join")}
             disabled={busy}
-            className="rounded-full bg-zinc-900 px-6 py-2 text-[14px] font-semibold text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900"
+            className="rounded-full bg-[#FAFAFA] px-6 py-2 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-50"
           >
             Join game
           </button>
@@ -367,7 +367,7 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
           <button
             onClick={() => act("rematch")}
             disabled={busy || iRematch}
-            className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-6 py-2 text-[14px] font-semibold text-white disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900"
+            className="flex items-center gap-1.5 rounded-full bg-[#FAFAFA] px-6 py-2 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-50"
           >
             <RotateCcw size={15} />
             {iRematch
@@ -381,7 +381,7 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
           <button
             onClick={() => act("leave")}
             disabled={busy}
-            className="flex items-center gap-1.5 rounded-full border border-zinc-300 px-4 py-2 text-[13px] font-semibold text-zinc-500 dark:border-zinc-700 dark:text-zinc-300"
+            className="flex items-center gap-1.5 rounded-full border border-[#3F3F46] px-4 py-2 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-50"
           >
             <Flag size={14} />
             {room.status === "playing" ? "Forfeit" : "Leave"}

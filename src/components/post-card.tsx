@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown } from "lucide-react";
+import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { Quote } from "@/components/quote";
+import { ChatSkeleton } from "@/components/skeletons";
 import { renderRich, stripMarkup } from "@/components/rich-text";
 import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { StatusDot } from "@/components/presence";
@@ -95,6 +96,7 @@ export type CommentAuthor = {
   id?: string;
   name: string;
   login42?: string | null;
+  avatar?: string | null;
 };
 
 export type FeedComment = {
@@ -277,6 +279,7 @@ export function PostCard({
   const [editedOverride, setEditedOverride] = useState(false);
   const [gone, setGone] = useState(false);
   const [confirmDeletePost, setConfirmDeletePost] = useState(false);
+  const [postMenuOpen, setPostMenuOpen] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentDraft, setEditCommentDraft] = useState("");
   const [confirmDeleteCommentId, setConfirmDeleteCommentId] = useState<
@@ -307,11 +310,11 @@ export function PostCard({
       toast.info("Original comment isn't loaded here.");
       return;
     }
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.scrollIntoView({ behavior: "auto", block: "center" });
     setFlashComment(id);
     setTimeout(
       () => setFlashComment((f) => (f === id ? null : f)),
-      1200
+      1500
     );
   }
 
@@ -361,14 +364,35 @@ export function PostCard({
     try {
       const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      const d = await res.json();
-      onUpdate?.(post.id, { deleted: true, likes: d.post.likes });
+      // Server hard-deletes the row — drop it locally (feed filters
+      // `deleted` patches out) and skip reading a body that no longer exists.
+      onUpdate?.(post.id, { deleted: true });
       setGone(true);
       setConfirmDeletePost(false);
       setIsOpen(false);
     } catch {
       toast.error("Delete failed");
     }
+  }
+
+  async function sharePost() {
+    const url = `${window.location.origin}/post/${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${post.author?.name ?? "Post"} on 42·social`, text: post.body.slice(0, 80), url });
+        setPostMenuOpen(false);
+        return;
+      }
+    } catch {
+      /* user cancelled or share failed — fall through to clipboard */
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+    setPostMenuOpen(false);
   }
 
   async function saveCommentEdit(id: string) {
@@ -479,51 +503,82 @@ export function PostCard({
             {displayEdited && " · Edited"}
           </p>
         </div>
-        {isMine && !editingPost && (
-          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
-            {confirmDeletePost ? (
+        {!editingPost && (
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setPostMenuOpen((v) => !v)}
+              aria-label="Post options"
+              aria-expanded={postMenuOpen}
+              aria-haspopup="menu"
+              aria-controls={`post-menu-${post.id}`}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setPostMenuOpen(false);
+              }}
+              className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <Ellipsis size={18} />
+            </button>
+            {postMenuOpen && (
               <>
-                <button
-                  onClick={deletePost}
-                  aria-label="Confirm delete post"
-                  title="Confirm delete"
-                  className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                >
-                  <Check size={15} />
-                </button>
-                <button
-                  onClick={() => setConfirmDeletePost(false)}
-                  aria-label="Cancel delete"
-                  className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <X size={15} />
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    setPostDraft(bodyOverride ?? post.body);
-                    setEditingPost(true);
-                    setConfirmDeletePost(false);
-                  }}
-                  aria-label="Edit post"
-                  title="Edit"
-                  className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-                >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  onClick={() => setConfirmDeletePost(true)}
-                  aria-label="Delete post"
-                  title="Delete"
-                  className="rounded-full p-1.5 text-zinc-400 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/40"
-                >
-                  <Trash2 size={15} />
-                </button>
+                <div
+                  aria-hidden
+                  onClick={() => { setPostMenuOpen(false); setConfirmDeletePost(false); }}
+                  className="fixed inset-0 z-10 cursor-default"
+                />
+                <div role="menu" id={`post-menu-${post.id}`} aria-label="Post options" className="absolute right-0 top-7 z-20 w-36 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl">
+                  <button
+                    role="menuitem"
+                    onClick={sharePost}
+                    className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
+                  >
+                    <Share2 size={13} /> Share post
+                  </button>
+                  {isMine ? (
+                    confirmDeletePost ? (
+                      <>
+                        <button
+                          role="menuitem"
+                          onClick={deletePost}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                        >
+                          <Check size={13} /> Confirm delete
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => setConfirmDeletePost(false)}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-white/5"
+                        >
+                          <X size={13} /> Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setPostDraft(bodyOverride ?? post.body);
+                            setEditingPost(true);
+                            setPostMenuOpen(false);
+                            setConfirmDeletePost(false);
+                          }}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
+                        >
+                          <Pencil size={13} /> Edit post
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => setConfirmDeletePost(true)}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                        >
+                          <Trash2 size={13} /> Delete post
+                        </button>
+                      </>
+                    )
+                  ) : null}
+                </div>
               </>
             )}
-          </span>
+          </div>
         )}
       </div>
       {editingPost ? (
@@ -538,26 +593,26 @@ export function PostCard({
             rows={3}
             maxLength={500}
             autoFocus
-            className="w-full resize-none rounded-xl border border-zinc-200 bg-transparent p-2 text-[15px] leading-6 outline-none focus:border-cyan-500 dark:border-zinc-700"
+            className="w-full resize-none rounded-[2px] border border-zinc-300 bg-zinc-50 p-3 text-[15px] leading-6 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:bg-black dark:text-zinc-50 dark:focus:border-zinc-600"
           />
           <div className="mt-2 flex justify-end gap-2">
             <button
               onClick={() => setEditingPost(false)}
-              className="rounded-full border border-zinc-300 px-4 py-1.5 text-[13px] font-semibold text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+              className="rounded-full border border-zinc-300 bg-transparent px-4 py-1.5 text-[13px] font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               Cancel
             </button>
             <button
               onClick={savePostEdit}
               disabled={!postDraft.trim()}
-              className="rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+              className="rounded-full bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white hover:opacity-85 disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
             >
               Save
             </button>
           </div>
         </div>
       ) : (
-        <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6">{renderRich(displayBody)}</p>
+        <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6 sm:text-base sm:leading-7">{renderRich(displayBody)}</p>
       )}
       <div className="mt-3 flex items-center gap-1">
         <button
@@ -585,35 +640,23 @@ export function PostCard({
         </button>
       </div>
       {isOpen && (
-        <div className="mt-3 border-t border-zinc-100 pt-2 dark:border-zinc-800">
-          {/* Kick-style chat: compact rows, colored names, viewport-capped */}
+        // Thread is a continuation of the card: same surface, one top
+        // hairline — no nested box (skills: tailwind-design-system restraint).
+        <div className="mt-2 border-t border-zinc-200 dark:border-zinc-800">
           <div className="relative">
           <div
             ref={chatRef}
             onScroll={onChatScroll}
             role="log"
             aria-label="Comments"
-            className="max-h-[45dvh] space-y-0.5 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+            className="max-h-[45dvh] divide-y divide-zinc-200/60 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] dark:divide-zinc-800/50"
           >
             {loadingComments ? (
-              <div
-                role="status"
-                aria-label="Loading comments"
-                className="space-y-1.5 px-1 py-1"
-              >
-                {[85, 65, 75].map((w, i) => (
-                  <div
-                    key={i}
-                    aria-hidden
-                    className="h-4 animate-pulse rounded-md bg-zinc-200 dark:bg-zinc-800"
-                    style={{ width: `${w}%` }}
-                  />
-                ))}
-              </div>
+              <ChatSkeleton rows={3} label="Loading comments" />
             ) : (
               <>
                 {comments.length === 0 && (
-                  <p className="px-1 py-2 text-[13px] text-zinc-400">
+                  <p className="px-4 py-4 text-center text-[13px] text-zinc-500 dark:text-zinc-400">
                     No comments yet — be the first to comment.
                   </p>
                 )}
@@ -639,9 +682,8 @@ export function PostCard({
               if (c.deleted) return null;
               if (c.kind === "sticker") {
                 return (
-                  <div key={c.id} className="flex items-center gap-2 px-1 py-1">
-                    {nameNode}
-                    <span className="text-[13px] text-zinc-500">:</span>
+                  <div key={c.id} className="flex items-center gap-2.5 p-3">
+                    <Avatar name={who} src={c.author?.avatar ?? null} size={28} />
                     <span className="text-4xl leading-none">{c.body}</span>
                   </div>
                 );
@@ -652,121 +694,149 @@ export function PostCard({
                   key={c.id}
                   id={`cmt-${post.id}-${c.id}`}
                   className={cn(
-                    "scroll-mt-2 overflow-hidden rounded px-1 py-1 text-[13.5px] leading-5 break-words hover:bg-zinc-100 dark:hover:bg-zinc-900",
-                    flashComment === c.id && "bg-orange-200/70 dark:bg-orange-500/15"
+                    "group flex gap-2 px-3 py-2 transition-colors",
+                    flashComment === c.id && "bg-cyan-500/15"
                   )}
                 >
-                  {c.replyTo && !isEditing && (
-                    <Quote
-                      name={c.replyTo.name}
-                      body={c.replyTo.body}
-                      mine={!!meId && c.replyTo.senderId === meId}
-                      onJump={() => jumpToComment(c.replyTo!.id)}
-                    />
-                  )}
-                  {nameNode}
-                  <span className="text-zinc-500">: </span>
-                  {isEditing ? (
-                    <span className="mt-1 block">
-                      <input
-                        value={editCommentDraft}
-                        onChange={(e) => setEditCommentDraft(e.target.value)}
-                        maxLength={300}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            saveCommentEdit(c.id);
-                          }
-                          if (e.key === "Escape") setEditingCommentId(null);
-                        }}
-                        className="h-8 w-full rounded-lg border border-zinc-200 bg-transparent px-2 text-[13.5px] outline-none focus:border-cyan-500 dark:border-zinc-700"
-                      />
-                      <span className="mt-1 flex gap-1">
-                        <button
-                          onClick={() => saveCommentEdit(c.id)}
-                          aria-label="Save edit"
-                          className="rounded-full p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                        >
-                          <Check size={13} />
-                        </button>
-                        <button
-                          onClick={() => setEditingCommentId(null)}
-                          aria-label="Cancel edit"
-                          className="rounded-full p-1 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                        >
-                          <X size={13} />
-                        </button>
-                      </span>
-                    </span>
-                  ) : (
-                    <span>{c.body}</span>
-                  )}
-                  {c.edited && !isEditing && (
-                    <span className="ml-1 text-[11px] italic text-zinc-400">
-                      (edited)
-                    </span>
-                  )}
-                  {c.createdAt && (
-                    <span className="ml-2 text-[11px] text-zinc-400">
-                      {timeAgo(c.createdAt)}
-                    </span>
-                  )}
-                  {!isEditing && !c.id.startsWith("tmp-") && (
-                    <button
-                      onClick={() => startReply(c)}
-                      aria-label="Reply to comment"
-                      className="ml-2 text-[11px] font-semibold text-zinc-400 transition-colors hover:text-[#5865F2]"
-                    >
-                      Reply
-                    </button>
-                  )}
-                  {mine && !isEditing && !c.id.startsWith("tmp-") && (
-                    <span className="ml-1 inline-flex items-center gap-0.5 align-middle" title="Your comment">
-                      {confirmDeleteCommentId === c.id ? (
-                        <>
-                          <button
-                            onClick={() => deleteComment(c.id)}
-                            aria-label="Confirm delete"
-                            title="Confirm delete"
-                            className="rounded-full p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                          >
-                            <Check size={13} />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteCommentId(null)}
-                            aria-label="Cancel delete"
-                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                          >
-                            <X size={13} />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => {
-                              setEditCommentDraft(c.body);
-                              setEditingCommentId(c.id);
-                              setConfirmDeleteCommentId(null);
-                            }}
-                            aria-label="Edit comment"
-                            title="Edit"
-                            className="rounded-full p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteCommentId(c.id)}
-                            aria-label="Delete comment"
-                            title="Delete"
-                            className="rounded-full p-1 text-zinc-400 hover:text-rose-500"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </>
+                  <Link href={handle ? `/profile/${encodeURIComponent(handle)}` : "#"} className="shrink-0">
+                    <Avatar name={who} src={c.author?.avatar ?? null} size={32} />
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-1.5">
+                      <Link
+                        href={handle ? `/profile/${encodeURIComponent(handle)}` : "#"}
+                        className="text-[13px] font-bold text-zinc-900 hover:underline dark:text-zinc-50"
+                      >
+                        {who}
+                      </Link>
+                      {c.createdAt && (
+                        <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                          {timeAgo(c.createdAt)}
+                        </span>
                       )}
-                    </span>
-                  )}
+                      {c.edited && !isEditing && (
+                        <span className="text-[11px] italic text-zinc-400">· edited</span>
+                      )}
+                    </div>
+
+                    {c.replyTo && !isEditing && (
+                      <div className="mt-1">
+                        <Quote
+                          name={c.replyTo.name}
+                          body={c.replyTo.body}
+                          mine={!!meId && c.replyTo.senderId === meId}
+                          onJump={() => jumpToComment(c.replyTo!.id)}
+                        />
+                      </div>
+                    )}
+
+                    {isEditing ? (
+                      <div className="mt-1">
+                        <input
+                          value={editCommentDraft}
+                          onChange={(e) => setEditCommentDraft(e.target.value)}
+                          maxLength={300}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              saveCommentEdit(c.id);
+                            }
+                            if (e.key === "Escape") setEditingCommentId(null);
+                          }}
+                          className="h-9 w-full rounded-[2px] border border-zinc-300 bg-white px-3 text-[13.5px] text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+                        />
+                        <span className="mt-1.5 flex gap-1">
+                          <button
+                            onClick={() => saveCommentEdit(c.id)}
+                            aria-label="Save edit"
+                            className="rounded-full bg-zinc-900 p-1.5 text-white hover:opacity-85 dark:bg-zinc-50 dark:text-zinc-900"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditingCommentId(null)}
+                            aria-label="Cancel edit"
+                            className="rounded-full border border-zinc-300 p-1.5 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                          >
+                            <X size={14} />
+                          </button>
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          "mt-0.5 rounded-2xl rounded-tl-md border px-2.5 py-1.5 text-[13.5px] leading-5",
+                          // All bubbles share one dark surface.
+                          mine
+                            ? "border-zinc-900 bg-zinc-900 text-white dark:border-[#2c2d2e] dark:bg-[#2c2d2e] dark:text-white"
+                            : "border-zinc-200 bg-white text-zinc-900 dark:border-[#2c2d2e] dark:bg-[#2c2d2e] dark:text-zinc-100"
+                        )}
+                      >
+                        <span className="whitespace-pre-wrap break-words">{renderRich(c.body)}</span>
+                      </div>
+                    )}
+
+                    {!isEditing && (
+                      <div className="mt-0.5 flex items-center gap-1">
+                        {!c.id.startsWith("tmp-") && (
+                          <button
+                            onClick={() => startReply(c)}
+                            aria-label="Reply to comment"
+                            className="rounded-full px-2 py-1 text-[11px] font-semibold text-zinc-500 transition-colors hover:bg-zinc-200/70 hover:text-cyan-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-cyan-300"
+                          >
+                            Reply
+                          </button>
+                        )}
+                        {mine && !c.id.startsWith("tmp-") && (
+                          <span className="inline-flex items-center gap-0.5">
+                            {confirmDeleteCommentId === c.id ? (
+                              <>
+                                <button
+                                  onClick={() => deleteComment(c.id)}
+                                  aria-label="Confirm delete"
+                                  title="Confirm delete"
+                                  className="rounded-full bg-rose-500 p-1.5 text-white hover:bg-rose-600"
+                                >
+                                  <Check size={12} />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteCommentId(null)}
+                                  aria-label="Cancel delete"
+                                  className="rounded-full bg-zinc-100 p-1.5 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setEditCommentDraft(c.body);
+                                    setEditingCommentId(c.id);
+                                    setConfirmDeleteCommentId(null);
+                                  }}
+                                  aria-label="Edit comment"
+                                  title="Edit"
+                                  className="rounded-full p-1.5 text-zinc-400 hover:bg-zinc-200/70 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteCommentId(c.id)}
+                                  aria-label="Delete comment"
+                                  title="Delete"
+                                  className="rounded-full p-1.5 text-zinc-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-500"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -784,9 +854,9 @@ export function PostCard({
           )}
           </div>
           {replyTo && (
-            <div className="flex items-center gap-2 pt-2">
-              <span className="min-w-0 flex-1 truncate rounded border-l-2 border-[#5865F2] bg-[#5865F2]/10 px-2 py-1 text-xs">
-                <b className="text-[#5865F2]">
+            <div className="flex items-center gap-2 px-2 pt-1.5">
+              <span className="min-w-0 flex-1 truncate rounded border-l-2 border-cyan-500 bg-cyan-500/10 px-2 py-1 text-xs">
+                <b className="font-semibold text-cyan-700 dark:text-cyan-300">
                   Replying to {replyTo.author?.name ?? "?"}
                 </b>{" "}
                 <span className="text-zinc-500 dark:text-zinc-400">
@@ -802,7 +872,7 @@ export function PostCard({
               </button>
             </div>
           )}
-          <form onSubmit={sendComment} className="flex items-center gap-1 pt-2">
+          <form onSubmit={sendComment} className="flex items-center gap-2 p-1.5">
             <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 300))} />
             <label htmlFor={`reply-${post.id}`} className="sr-only">
               Chat a reply
@@ -812,20 +882,17 @@ export function PostCard({
               id={`reply-${post.id}`}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Chat…"
+              placeholder="Add a comment…"
               maxLength={300}
-              className="h-9 min-w-0 flex-1 rounded-full border border-zinc-200 bg-transparent px-3 text-[14px] outline-none focus:border-cyan-500 dark:border-zinc-700"
+              className="h-9 min-w-0 flex-1 rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 text-[14px] text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
             />
             <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
               {graphemeLen(draft)}/300
             </span>
-            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
-              {draft.length}/300
-            </span>
             <button
               type="submit"
               disabled={!draft.trim() || busy}
-              className="h-9 cursor-pointer rounded-full bg-zinc-900 px-4 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-30 dark:bg-zinc-50 dark:text-zinc-900"
+              className="h-9 cursor-pointer rounded-[2px] bg-zinc-900 px-5 text-[13px] font-semibold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
             >
               Send
             </button>

@@ -16,7 +16,14 @@ async function hasSession(req: NextRequest): Promise<boolean> {
   const sec = secret();
   if (!token || !sec) return false;
   try {
-    await jwtVerify(token, sec);
+    try {
+      await jwtVerify(token, sec, {
+        issuer: "42-social",
+        audience: "42-social-web",
+      });
+    } catch {
+      await jwtVerify(token, sec);
+    }
     return true;
   } catch {
     return false;
