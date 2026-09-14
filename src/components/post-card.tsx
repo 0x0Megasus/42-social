@@ -764,14 +764,14 @@ export function PostCard({
                           <button
                             onClick={() => saveCommentEdit(c.id)}
                             aria-label="Save edit"
-                            className="rounded-full bg-zinc-900 p-1.5 text-white hover:opacity-85 dark:bg-zinc-50 dark:text-zinc-900"
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900 text-white hover:opacity-85 dark:bg-zinc-50 dark:text-zinc-900"
                           >
                             <Check size={14} />
                           </button>
                           <button
                             onClick={() => setEditingCommentId(null)}
                             aria-label="Cancel edit"
-                            className="rounded-full border border-zinc-300 p-1.5 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
                           >
                             <X size={14} />
                           </button>

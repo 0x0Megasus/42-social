@@ -162,7 +162,7 @@ export function EditProfileForm({
                   type="button"
                   onClick={() => removeSocial(idx)}
                   aria-label={`Remove ${s.label}`}
-                  className="rounded-full p-1.5 text-zinc-500 hover:bg-[#18181B] hover:text-[#F4F4F5]"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-[#18181B] hover:text-[#F4F4F5]"
                 >
                   <Trash2 size={14} />
                 </button>

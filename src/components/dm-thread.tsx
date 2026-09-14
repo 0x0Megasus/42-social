@@ -725,7 +725,7 @@ export function DmThread({
           placeholder={`Message ${peerName}`}
           maxLength={1000}
           autoComplete="off"
-          className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          className="h-9 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
         <span className="shrink-0 text-[11px] tabular-nums text-[#949BA4]">
           {graphemeLen(draft)}/500
@@ -734,7 +734,7 @@ export function DmThread({
           type="submit"
           disabled={!draft.trim() || busy}
           suppressHydrationWarning
-          className="h-10 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
+          className="h-9 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
         >
           Send
         </button>

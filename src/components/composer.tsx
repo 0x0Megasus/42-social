@@ -101,7 +101,7 @@ export function Composer({
           type="submit"
           disabled={!body.trim() || busy}
           suppressHydrationWarning
-          className="cursor-pointer rounded-[2px] bg-zinc-900 px-5 py-1.5 text-[13px] font-semibold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
+          className="h-9 shrink-0 cursor-pointer rounded-[2px] bg-zinc-900 px-5 text-[13px] font-semibold text-white hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900"
         >
           {busy ? "Posting…" : "Post"}
         </button>
