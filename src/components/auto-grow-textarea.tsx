@@ -21,8 +21,14 @@ export const AutoGrowTextarea = forwardRef<HTMLTextAreaElement, Props>(
     useLayoutEffect(() => {
       const el = inner.current;
       if (!el) return;
+      // Border-box math: scrollHeight covers content + padding only, so add
+      // the border back — otherwise the field lands ~2px off the h-9 row.
+      const border = el.offsetHeight - el.clientHeight;
       el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+      const full = el.scrollHeight + border;
+      const next = Math.min(Math.max(full, 36), maxHeight);
+      el.style.height = `${next}px`;
+      el.style.overflowY = full > maxHeight ? "auto" : "hidden";
     }, [value, maxHeight]);
 
     return (
