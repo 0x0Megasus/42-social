@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { Heart } from "lucide-react";
 import { SITE, profileUrl, type ProfileTarget } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ function InstagramMark({ size = 13 }: { size?: number }) {
 }
 
 const KEY = "footer-profile-target";
+const TARGET_EVENT = "footer-profile-target-change";
 
 function FortyTwoMark({ size = 14 }: { size?: number }) {
   return (
@@ -40,22 +42,50 @@ function FortyTwoMark({ size = 14 }: { size?: number }) {
   );
 }
 
-export function Footer() {
-  const [target, setTarget] = useState<ProfileTarget>("intra");
+function subscribeResize(onChange: () => void) {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
 
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(KEY);
-      if (saved === "instagram" || saved === "intra") setTarget(saved);
-    } catch {
-      /* private mode */
-    }
-  }, []);
+function getTargetSnapshot(): ProfileTarget {
+  try {
+    const saved = window.localStorage.getItem(KEY);
+    if (saved === "instagram" || saved === "intra") return saved;
+  } catch {
+    /* private mode */
+  }
+  return "intra";
+}
+
+function getTargetServerSnapshot(): ProfileTarget {
+  return "intra";
+}
+
+function subscribeTarget(onChange: () => void) {
+  window.addEventListener(TARGET_EVENT, onChange);
+  window.addEventListener("storage", onChange); // sync across tabs
+  return () => {
+    window.removeEventListener(TARGET_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+export function Footer() {
+  const pathname = usePathname();
+  const isDM = pathname.startsWith("/dm");
+  const isMobile = useSyncExternalStore(
+    subscribeResize,
+    () => window.innerWidth < 640,
+    () => false
+  );
+  const target = useSyncExternalStore(subscribeTarget, getTargetSnapshot, getTargetServerSnapshot);
+
+  if (isDM && isMobile) return null;
 
   function pick(t: ProfileTarget) {
-    setTarget(t);
     try {
       window.localStorage.setItem(KEY, t);
+      window.dispatchEvent(new Event(TARGET_EVENT));
     } catch {
       /* private mode */
     }
