@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { SITE } from "@/lib/site";
-import { Footer } from "@/components/footer";
 
 export const metadata: Metadata = {
   title: `Privacy Policy — ${SITE.name}`,
@@ -119,7 +118,6 @@ export default function Privacy() {
           the new policy.
         </p>
       </Section>
-      <Footer />
     </article>
   );
 }
