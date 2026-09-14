@@ -41,7 +41,9 @@ export const AutoGrowTextarea = forwardRef<HTMLTextAreaElement, Props>(
           if (typeof ref === "function") ref(el);
           else if (ref) ref.current = el;
         }}
-        className={cn("resize-none overflow-y-auto", className)}
+        // block (not inline-block): kills the baseline strut gap that would
+        // otherwise lift the field a few px above its row-mates.
+        className={cn("block resize-none overflow-y-auto", className)}
       />
     );
   }
