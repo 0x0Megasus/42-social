@@ -128,7 +128,7 @@ export function GamesLobby({
         <button
           type="submit"
           disabled={joining}
-          className="flex h-10 shrink-0 items-center gap-1.5 rounded-[2px] bg-[#FAFAFA] px-4 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
+          className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-[2px] bg-[#FAFAFA] px-4 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
         >
           {joining ? (
             <LoaderCircle size={15} className="animate-spin" />
