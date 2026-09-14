@@ -733,7 +733,7 @@ export function DmThread({
           placeholder={`Message ${peerName}`}
           maxLength={1000}
           autoComplete="off"
-          className="min-h-9 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-2 pr-16 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          className="min-h-9 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-[7px] pr-16 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
           {draft.length > 0 && (
             <span

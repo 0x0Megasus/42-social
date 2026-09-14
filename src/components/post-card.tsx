@@ -921,7 +921,7 @@ export function PostCard({
               }}
               placeholder="Add a comment…"
               maxLength={300}
-              className="min-h-9 w-full rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 py-2 pr-16 text-[14px] leading-5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+              className="min-h-9 w-full rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 py-[7px] pr-16 text-[14px] leading-5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
             />
               {draft.length > 0 && (
                 <span
