@@ -892,7 +892,8 @@ export function PostCard({
             <label htmlFor={`reply-${post.id}`} className="sr-only">
               Chat a reply
             </label>
-            <AutoGrowTextarea
+            <div className="relative min-w-0 flex-1">
+              <AutoGrowTextarea
               ref={replyInputRef}
               id={`reply-${post.id}`}
               value={draft}
@@ -905,11 +906,21 @@ export function PostCard({
               }}
               placeholder="Add a comment…"
               maxLength={300}
-              className="min-h-9 min-w-0 flex-1 rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 py-2 text-[14px] leading-5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+              className="min-h-9 w-full rounded-[2px] border border-zinc-300 bg-zinc-50 px-4 py-2 pr-12 text-[14px] leading-5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
             />
-            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
-              {graphemeLen(draft)}/300
-            </span>
+              {draft.length > 0 && (
+                <span
+                  aria-hidden
+                  className={`pointer-events-none absolute bottom-2 right-2 rounded bg-zinc-50 px-1 text-[10px] tabular-nums dark:bg-zinc-900 ${
+                    graphemeLen(draft) > 270
+                      ? "text-rose-500"
+                      : "text-zinc-400 dark:text-zinc-500"
+                  }`}
+                >
+                  {graphemeLen(draft)}/300
+                </span>
+              )}
+            </div>
             <button
               type="submit"
               disabled={!draft.trim() || busy}

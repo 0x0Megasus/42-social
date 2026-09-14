@@ -718,7 +718,8 @@ export function DmThread({
         <label htmlFor="dm-input" className="sr-only">
           Message
         </label>
-        <AutoGrowTextarea
+        <div className="relative min-w-0 flex-1">
+          <AutoGrowTextarea
           ref={dmInputRef}
           id="dm-input"
           value={draft}
@@ -732,11 +733,19 @@ export function DmThread({
           placeholder={`Message ${peerName}`}
           maxLength={1000}
           autoComplete="off"
-          className="min-h-9 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-2 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          className="min-h-9 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-2 pr-12 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
         />
-        <span className="shrink-0 text-[11px] tabular-nums text-[#949BA4]">
-          {graphemeLen(draft)}/500
-        </span>
+          {draft.length > 0 && (
+            <span
+              aria-hidden
+              className={`pointer-events-none absolute bottom-2 right-2 rounded bg-[#09090B] px-1 text-[10px] tabular-nums ${
+                graphemeLen(draft) > 450 ? "text-rose-400" : "text-[#949BA4]"
+              }`}
+            >
+              {graphemeLen(draft)}/500
+            </span>
+          )}
+        </div>
         <button
           type="submit"
           disabled={!draft.trim() || busy}
