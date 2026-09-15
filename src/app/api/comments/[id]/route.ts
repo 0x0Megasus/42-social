@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { updateDB } from "@/lib/db";
+import {
+  queryCollectionEntries,
+  setPath,
+  type Comment,
+} from "@/lib/db";
+import { recountPost } from "@/lib/counters";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -11,21 +16,30 @@ async function ownComment(
   me: string,
   mutate: (c: { body: string; edited: boolean; deleted: boolean }) => void
 ) {
-  return updateDB((db) => {
-    const c = db.comments.find((x) => x.id === commentId);
-    if (!c || c.authorId !== me || c.deleted) return null;
-    mutate(c);
-    const a = db.users.find((u) => u.id === c.authorId);
-    return {
-      ...c,
-      author: a
-        ? { id: a.id, name: a.name, login42: a.login42 }
-        : null,
-      total: db.comments.filter(
-        (x) => x.postId === c.postId && !x.deleted
-      ).length,
-    };
-  });
+  // Indexed id lookup (no collection scan), then a direct write.
+  // NOTE: not a transaction — firebase-admin runs the tx updater against
+  // the LOCAL guess (null) first, so "abort when absent" never reaches the
+  // server. Read-verify-write is safe here: only the owner can mutate
+  // their own rows, so concurrent writers are always the same user and
+  // last-writer-wins is correct.
+  const hits = await queryCollectionEntries("comments", {
+    orderBy: "id",
+    equalTo: commentId,
+    limit: 5,
+  }).catch(() => []);
+  const hit = hits.find(
+    ({ row }) => row.authorId === me && !row.deleted
+  );
+  if (!hit) return null;
+  const next: Comment = { ...hit.row };
+  mutate(next);
+  await setPath(`/comments/${hit.key}`, next);
+  const counts = await recountPost(next.postId).catch(() => null);
+  return {
+    ...next,
+    author: next.author ?? null,
+    total: counts?.comments ?? 0,
+  };
 }
 
 // PATCH /api/comments/[id] { body } — edit own comment. Readers see "edited".

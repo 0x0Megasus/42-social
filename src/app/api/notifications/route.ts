@@ -1,34 +1,42 @@
 import { NextResponse } from "next/server";
-import { readDB, updateDB, userPublic } from "@/lib/db";
+import { cachedUserById, userPublic } from "@/lib/db";
+import {
+  deleteNotifications,
+  listNotifications,
+  markAllRead,
+} from "@/lib/notifications";
 import { getSession } from "@/lib/session";
 
 export async function GET() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const db = await readDB();
-  const byId = new Map(db.users.map((u) => [u.id, u]));
-  const items = db.notifications
-    .filter((n) => n.userId === session.sub)
-    .slice(0, 30)
-    .map((n) => ({
-      ...n,
-      from: byId.get(n.fromId) ? userPublic(byId.get(n.fromId)!) : null,
-    }));
-  return NextResponse.json({
-    notifications: items,
-    unread: items.filter((n) => !n.read).length,
-  });
+  const items = await listNotifications(session.sub, 30);
+  // Author previews for the visible page only (cached profiles).
+  const fromIds = [...new Set(items.map((n) => n.fromId))];
+  const users = await Promise.all(fromIds.map((id) => cachedUserById(id)));
+  const byId = new Map(users.filter((u) => !!u).map((u) => [u!.id, u!]));
+  return NextResponse.json(
+    {
+      notifications: items.map((n) => ({
+        ...n,
+        from: byId.get(n.fromId) ? userPublic(byId.get(n.fromId)!) : null,
+      })),
+      unread: items.filter((n) => !n.read).length,
+    },
+    {
+      headers: {
+        "Cache-Control": "private, max-age=5, stale-while-revalidate=15",
+      },
+    }
+  );
 }
 
 export async function POST() {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  await updateDB((d) => {
-    for (const n of d.notifications)
-      if (n.userId === session.sub) n.read = true;
-  });
+  await markAllRead(session.sub);
   return NextResponse.json({ ok: true });
 }
 
@@ -40,12 +48,6 @@ export async function DELETE(req: Request) {
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const id = new URL(req.url).searchParams.get("id") ?? null;
-  const removed = await updateDB((d) => {
-    const before = d.notifications.length;
-    d.notifications = d.notifications.filter(
-      (n) => n.userId !== session.sub || (id !== null && n.id !== id)
-    );
-    return before - d.notifications.length;
-  });
+  const removed = await deleteNotifications(session.sub, id);
   return NextResponse.json({ removed });
 }

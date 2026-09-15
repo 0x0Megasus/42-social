@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from "jose";
-import { updateDB, uid } from "@/lib/db";
+import { indexUserHandles, updateDB, uid, writeUserById } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { clean } from "@/lib/sanitize";
@@ -88,6 +88,13 @@ export async function POST(req: Request) {
     db.users.push(fresh);
     return fresh;
   });
+
+  // O(1) lookup structures for future reads (best-effort; the backfill
+  // covers anything missed).
+  await Promise.all([
+    writeUserById(user.id, user).catch(() => null),
+    indexUserHandles(user).catch(() => null),
+  ]);
 
   await setSessionCookie(
     await createSession({ sub: user.id, email: user.email, name: user.name })

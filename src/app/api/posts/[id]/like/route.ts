@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { updateDB, uid } from "@/lib/db";
+import {
+  queryCollectionEntries,
+  readPath,
+  readPostById,
+  setPath,
+  transactLeaf,
+  updatePaths,
+} from "@/lib/db";
+import { newNotification, pushNotification } from "@/lib/notifications";
+import { recountPost } from "@/lib/counters";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
@@ -17,36 +26,62 @@ export async function POST(
       { status: 429, headers: { "Retry-After": String(lim.retryAfter) } }
     );
   const { id } = await params;
-  const result = await updateDB((db) => {
-    const post = db.posts.find((p) => p.id === id);
-    if (!post) return null;
-    const i = db.likes.findIndex(
-      (l) => l.postId === id && l.userId === session.sub
-    );
-    let liked: boolean;
-    if (i >= 0) {
-      db.likes.splice(i, 1);
+  const post = await readPostById(id);
+  if (!post || post.deleted)
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  // O(1) toggle on the keyed leaf — cost is independent of total likes.
+  const byPost = `/likes-by-post/${id}/${session.sub}`;
+  const byUser = `/likes-by-user/${session.sub}/${id}`;
+  let liked: boolean;
+  const mapCur = await readPath<unknown>(byPost).catch(() => null);
+  if (!mapCur) {
+    // Pre-map legacy row? Then this tap is an UNLIKE — delete the legacy
+    // leaf instead of creating a map leaf (post-backfill this never hits).
+    const legacy = await queryCollectionEntries("likes", {
+      orderBy: "postId",
+      equalTo: id,
+      limit: 100_000,
+    }).catch(() => []);
+    const hit = legacy.find(({ row }) => row.userId === session.sub);
+    if (hit) {
+      await updatePaths({ [`/likes/${hit.key}`]: null }).catch(() => null);
       liked = false;
     } else {
-      db.likes.push({ postId: id, userId: session.sub });
-      liked = true;
-      if (post.authorId !== session.sub) {
-        db.notifications.unshift({
-          id: uid("n"),
-          userId: post.authorId,
-          kind: "like",
-          fromId: session.sub,
-          postId: id,
-          read: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
+      const tx = await transactLeaf(byPost, (cur) => (cur ? null : true));
+      liked = tx.committed
+        ? tx.snapshot.val() === true
+        : (await readPath<unknown>(byPost).catch(() => null)) != null;
     }
-    return {
-      liked,
-      likes: db.likes.filter((l) => l.postId === id).length,
-    };
-  });
-  if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json(result);
+  } else {
+    await setPath(byPost, null).catch(() => null);
+    liked = false;
+    // Hygiene: drop any pre-map duplicate for this exact like so the
+    // legacy array stops growing stale rows (count stays exact regardless
+    // via union in recountPost).
+    const legacy = await queryCollectionEntries("likes", {
+      orderBy: "postId",
+      equalTo: id,
+      limit: 100_000,
+    }).catch(() => []);
+    const stale = legacy.filter(({ row }) => row.userId === session.sub);
+    if (stale.length > 0) {
+      await updatePaths(
+        Object.fromEntries(stale.map(({ key }) => [`/likes/${key}`, null]))
+      ).catch(() => null);
+    }
+  }
+  if (liked) {
+    await setPath(byUser, true).catch(() => null);
+    if (post.authorId !== session.sub) {
+      await pushNotification(
+        newNotification(post.authorId, "like", session.sub, id)
+      ).catch(() => null);
+    }
+  } else {
+    await setPath(byUser, null).catch(() => null);
+  }
+  // Exact count (map ∪ legacy) + counter write-back for O(1) feed reads.
+  const counts = await recountPost(id).catch(() => null);
+  return NextResponse.json({ liked, likes: counts?.likes ?? 0 });
 }

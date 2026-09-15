@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { exchange42Code, fetch42Me } from "@/lib/forty-two";
-import { updateDB, uid } from "@/lib/db";
+import { indexUserHandles, updateDB, uid, writeUserById } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { clean } from "@/lib/sanitize";
@@ -65,6 +65,13 @@ export async function GET(req: Request) {
       db.users.push(fresh);
       return fresh;
     });
+
+    // O(1) lookup structures for future reads (best-effort; the backfill
+    // covers anything missed).
+    await Promise.all([
+      writeUserById(user.id, user).catch(() => null),
+      indexUserHandles(user).catch(() => null),
+    ]);
 
     await setSessionCookie(
       await createSession({ sub: user.id, email: user.email, name: user.name })

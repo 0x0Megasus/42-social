@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { FounderBadge } from "@/components/founder-badge";
@@ -21,6 +21,16 @@ export type FeedPost = {
   id: string;
   body: string;
   image: string | null;
+  thumb: string | null;
+  cloudIds?: string[] | null;
+  video: {
+    url: string;
+    thumb: string | null;
+    w: number | null;
+    h: number | null;
+    duration: number | null;
+    bytes: number | null;
+  } | null;
   edited: boolean;
   deleted: boolean;
   createdAt: string;
@@ -111,6 +121,113 @@ export type CommentAuthor = {
   avatar?: string | null;
   isSupport?: boolean | null;
 };
+
+// Post attachments: images load a thumbnail first, then swap to full
+// quality the moment they scroll into view (viewport-aware loading:
+// full quality without the click, feed stays cheap). Videos stay
+// click-to-play so files only download on tap.
+export function PostMedia({ post }: { post: FeedPost }) {
+  const [expanded, setExpanded] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [inView, setInView] = useState(false);
+  if (post.video) {
+    const v = post.video;
+    if (playing) {
+      return (
+        <video
+          src={v.url}
+          controls
+          playsInline
+          preload="metadata"
+          className="mt-3 max-h-[70dvh] w-full rounded-xl bg-black"
+        />
+      );
+    }
+    return (
+      <button
+        onClick={() => setPlaying(true)}
+        aria-label="Play video"
+        className="group relative mt-3 block w-full overflow-hidden rounded-xl bg-black"
+      >
+        {v.thumb ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={v.thumb}
+            alt="Video preview"
+            loading="lazy"
+            className="max-h-[50dvh] w-full object-cover"
+          />
+        ) : (
+          <span className="flex aspect-video w-full items-center justify-center text-zinc-500">
+            Video
+          </span>
+        )}
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover:scale-105">
+            <Play size={22} fill="currentColor" />
+          </span>
+        </span>
+        {typeof v.duration === "number" && (
+          <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white">
+            {Math.floor(v.duration / 60)}:{String(Math.floor(v.duration % 60)).padStart(2, "0")}
+          </span>
+        )}
+      </button>
+    );
+  }
+  if (post.image) {
+    return (
+      <InView onChange={setInView}>
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          aria-label={expanded ? "Shrink image" : "Expand image"}
+          className="mt-3 block w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-900"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={inView || expanded ? post.image : (post.thumb ?? post.image)}
+            alt="Post image"
+            loading="lazy"
+            className={expanded ? "w-full" : "max-h-[70dvh] w-full object-cover"}
+          />
+        </button>
+      </InView>
+    );
+  }
+  return null;
+}
+
+// Visibility wrapper: reports when children enter the viewport (once).
+function InView({
+  onChange,
+  children,
+}: {
+  onChange: (visible: boolean) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      onChange(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          onChange(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <div ref={ref}>{children}</div>;
+}
 
 export type FeedComment = {
   id: string;
@@ -252,7 +369,7 @@ export function PostCard({
         }
       : null;
     const temp = {
-      id: `tmp-${Date.now()}`,
+      id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       body: msg,
       kind: "text" as const,
       replyTo: replySnap,
@@ -652,6 +769,7 @@ export function PostCard({
       ) : (
         <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6 sm:text-base sm:leading-7">{renderRich(displayBody)}</p>
       )}
+      <PostMedia post={post} />
       <div className="mt-3 flex items-center gap-1">
         <button
           onClick={toggleLike}

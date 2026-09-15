@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { updateDB, uid } from "@/lib/db";
+import {
+  queryCollectionEntries,
+  readPath,
+  readUserById,
+  setPath,
+  transactLeaf,
+  updatePaths,
+} from "@/lib/db";
+import { newNotification, pushNotification } from "@/lib/notifications";
+import { bumpUserCounter } from "@/lib/counters";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
@@ -18,28 +27,56 @@ export async function POST(req: Request) {
       { error: "limit", retryAfter: lim.retryAfter },
       { status: 429, headers: { "Retry-After": String(lim.retryAfter) } }
     );
-  const following = await updateDB((db) => {
-    if (!db.users.some((u) => u.id === userId)) return null;
-    const i = db.follows.findIndex(
-      (f) => f.followerId === session.sub && f.followingId === userId
-    );
-    if (i >= 0) {
-      db.follows.splice(i, 1);
-      return false;
+  const target = await readUserById(userId);
+  if (!target) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  // O(1) toggle on keyed leaves (both directions for both list views).
+  const byFollower = `/follows-by-follower/${session.sub}/${userId}`;
+  const byFollowing = `/follows-by-following/${userId}/${session.sub}`;
+  let following: boolean;
+  const mapCur = await readPath<unknown>(byFollower).catch(() => null);
+  if (!mapCur) {
+    // Pre-map legacy row? Then this tap is an UNFOLLOW.
+    const legacy = await queryCollectionEntries("follows", {
+      orderBy: "followerId",
+      equalTo: session.sub,
+      limit: 100_000,
+    }).catch(() => []);
+    const hit = legacy.find(({ row }) => row.followingId === userId);
+    if (hit) {
+      await updatePaths({ [`/follows/${hit.key}`]: null }).catch(() => null);
+      following = false;
+    } else {
+      const tx = await transactLeaf(byFollower, (cur) => (cur ? null : true));
+      following = tx.committed
+        ? tx.snapshot.val() === true
+        : (await readPath<unknown>(byFollower).catch(() => null)) != null;
     }
-    db.follows.push({ followerId: session.sub, followingId: userId });
-    db.notifications.unshift({
-      id: uid("n"),
-      userId,
-      kind: "follow",
-      fromId: session.sub,
-      postId: null,
-      read: false,
-      createdAt: new Date().toISOString(),
-    });
-    return true;
-  });
-  if (following === null)
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+  } else {
+    await setPath(byFollower, null).catch(() => null);
+    following = false;
+    const legacy = await queryCollectionEntries("follows", {
+      orderBy: "followerId",
+      equalTo: session.sub,
+      limit: 100_000,
+    }).catch(() => []);
+    const stale = legacy.filter(({ row }) => row.followingId === userId);
+    if (stale.length > 0) {
+      await updatePaths(
+        Object.fromEntries(stale.map(({ key }) => [`/follows/${key}`, null]))
+      ).catch(() => null);
+    }
+  }
+  await setPath(byFollowing, following ? true : null).catch(() => null);
+  // Exact counter bumps (only on actual state change — toggle is exact).
+  await Promise.all([
+    bumpUserCounter(userId, "followersCount", following ? 1 : -1),
+    bumpUserCounter(session.sub, "followingCount", following ? 1 : -1),
+  ]).catch(() => null);
+  if (following) {
+    await pushNotification(
+      newNotification(userId, "follow", session.sub, null)
+    ).catch(() => null);
+  }
   return NextResponse.json({ following });
 }

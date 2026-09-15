@@ -29,6 +29,7 @@ type Convo = {
     kind: string;
     mine: boolean;
     senderId?: string;
+    duration?: number | null;
     createdAt: string;
   } | null;
   unread: number;
@@ -125,7 +126,9 @@ export function DmList({ meId }: { meId: string }) {
                     ? `${c.last.mine ? "You: " : ""}${
                         c.last.kind === "sticker"
                           ? " sent a sticker"
-                          : stripMarkup(c.last.body)
+                          : c.last.kind === "voice"
+                            ? `🎤 ${typeof c.last.duration === "number" ? `${Math.floor(c.last.duration / 60)}:${String(Math.floor(c.last.duration % 60)).padStart(2, "0")}` : "Voice message"}`
+                            : stripMarkup(c.last.body)
                       }`
                     : "Start chatting"}
                 </p>

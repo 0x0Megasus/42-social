@@ -1,5 +1,6 @@
 import { getRtdb, isRtdbConfigured, rtdb } from "@/lib/fbrdb";
 import { isSupportUser } from "@/lib/support";
+import { cached, invalidatePrefix } from "@/lib/cache";
 
 // Storage engine: Firebase Realtime Database, ONLY.
 // The server refuses to boot routes without the three FIREBASE_* env vars,
@@ -21,6 +22,34 @@ export type User = {
   socials: SocialLink[];
   lastSeen: string | null;
   createdAt: string;
+  // lowercase name for case-insensitive prefix search (indexOn nameLower)
+  nameLower?: string;
+  // denormalized counters (maintained on write, backfilled lazily)
+  postsCount?: number;
+  followersCount?: number;
+  followingCount?: number;
+};
+
+// Author snapshot written onto posts/comments at creation time, so feeds
+// never need a user-table join to render names/avatars. Stale until the
+// author edits their profile (rare) — names/avatars are read-heavy,
+// write-rare, the textbook snapshot case.
+export type AuthorSnapshot = {
+  id: string;
+  name: string;
+  login42: string | null;
+  avatar: string | null;
+  campus: string | null;
+  isSupport?: boolean | null;
+};
+
+export type PostVideo = {
+  url: string;
+  thumb: string | null;
+  w: number | null;
+  h: number | null;
+  duration: number | null;
+  bytes: number | null;
 };
 
 export type Post = {
@@ -28,9 +57,16 @@ export type Post = {
   authorId: string;
   body: string;
   image: string | null;
+  thumb: string | null;
+  video: PostVideo | null;
+  /** Cloudinary public_ids of attached files (for destroy on delete) */
+  cloudIds?: string[] | null;
   edited: boolean;
   deleted: boolean;
   createdAt: string;
+  author?: AuthorSnapshot | null;
+  likesCount?: number;
+  commentsCount?: number;
 };
 
 export type Comment = {
@@ -43,6 +79,7 @@ export type Comment = {
   deleted: boolean;
   replyTo: QuotedReply;
   createdAt: string;
+  author?: AuthorSnapshot | null;
 };
 
 export type Notification = {
@@ -69,25 +106,40 @@ export type Conversation = {
   createdAt: string;
 };
 
+export type MessageAttachment = {
+  url: string;
+  duration: number | null;
+  peaks: number[] | null;
+  bytes: number | null;
+  mime: string | null;
+  /** Cloudinary public_id (for destroy on delete) */
+  publicId?: string | null;
+};
+
 export type Message = {
   id: string;
   convoId: string;
   senderId: string;
   body: string;
-  kind: "text" | "sticker";
+  kind: "text" | "sticker" | "voice";
   read: boolean;
   edited: boolean;
   deleted: boolean;
   replyTo: QuotedReply;
   createdAt: string;
+  attachment?: MessageAttachment | null;
 };
+
+export type Like = { postId: string; userId: string };
+export type Follow = { followerId: string; followingId: string };
+export type MediaKind = "image" | "video" | "voice";
 
 type DB = {
   users: User[];
   posts: Post[];
   comments: Comment[];
-  likes: { postId: string; userId: string }[];
-  follows: { followerId: string; followingId: string }[];
+  likes: Like[];
+  follows: Follow[];
   notifications: Notification[];
   conversations: Conversation[];
   messages: Message[];
@@ -125,33 +177,60 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+// Per-collection normalizers (extracted from normalize() so scoped reads
+// get identical defaults without pulling the whole root).
+// NOTE: the `(x as T)` casts are load-bearing — `in` narrows required props
+// to never, and casting back out is exactly what the original did.
+// Every nullable profile field gets a null default here: legacy rows often
+// MISS keys entirely (undefined), and a single undefined value makes RTDB
+// reject an entire set()/update() write with a 500.
+export function normalizeUser(u: User): User {
+  if (!("lastSeen" in u)) (u as User).lastSeen = null;
+  if ((u as User).login42 === undefined) (u as User).login42 = null;
+  if ((u as User).googleId === undefined) (u as User).googleId = null;
+  if ((u as User).avatar === undefined) (u as User).avatar = null;
+  if ((u as User).campus === undefined) (u as User).campus = null;
+  if ((u as User).coalition === undefined) (u as User).coalition = null;
+  if (typeof (u as User).bio !== "string") (u as User).bio = "";
+  if (typeof (u as User).name !== "string") (u as User).name = "";
+  if (typeof (u as User).email !== "string") (u as User).email = "";
+  if (!Array.isArray((u as User).socials)) (u as User).socials = [];
+  else {
+    (u as User).socials = (u as User).socials
+      .filter((s) => s && typeof s.url === "string" && typeof s.label === "string")
+      .slice(0, 4);
+  }
+  return u;
+}
+
+export function normalizePost(p: Post): Post {
+  if (!("edited" in p)) (p as Post).edited = false;
+  if (!("deleted" in p)) (p as Post).deleted = false;
+  return p;
+}
+
+export function normalizeComment(c: Comment): Comment {
+  if (!("kind" in c)) (c as Comment).kind = "text";
+  if (!("edited" in c)) (c as Comment).edited = false;
+  if (!("deleted" in c)) (c as Comment).deleted = false;
+  if (!("replyTo" in c)) (c as Comment).replyTo = null;
+  return c;
+}
+
+export function normalizeMessage(m: Message): Message {
+  if (!("kind" in m)) (m as Message).kind = "text";
+  if (!("read" in m)) (m as Message).read = true;
+  if (!("edited" in m)) (m as Message).edited = false;
+  if (!("deleted" in m)) (m as Message).deleted = false;
+  if (!("replyTo" in m)) (m as Message).replyTo = null;
+  return m;
+}
+
 function normalize(db: DB): DB {
-  for (const u of db.users) {
-    if (!("lastSeen" in u)) (u as User).lastSeen = null;
-    if (!Array.isArray((u as User).socials)) (u as User).socials = [];
-    else {
-      (u as User).socials = (u as User).socials
-        .filter((s) => s && typeof s.url === "string" && typeof s.label === "string")
-        .slice(0, 4);
-    }
-  }
-  for (const p of db.posts) {
-    if (!("edited" in p)) (p as Post).edited = false;
-    if (!("deleted" in p)) (p as Post).deleted = false;
-  }
-  for (const c of db.comments) {
-    if (!("kind" in c)) (c as Comment).kind = "text";
-    if (!("edited" in c)) (c as Comment).edited = false;
-    if (!("deleted" in c)) (c as Comment).deleted = false;
-    if (!("replyTo" in c)) (c as Comment).replyTo = null;
-  }
-  for (const m of db.messages) {
-    if (!("kind" in m)) (m as Message).kind = "text";
-    if (!("read" in m)) (m as Message).read = true;
-    if (!("edited" in m)) (m as Message).edited = false;
-    if (!("deleted" in m)) (m as Message).deleted = false;
-    if (!("replyTo" in m)) (m as Message).replyTo = null;
-  }
+  for (const u of db.users) normalizeUser(u as User);
+  for (const p of db.posts) normalizePost(p as Post);
+  for (const c of db.comments) normalizeComment(c as Comment);
+  for (const m of db.messages) normalizeMessage(m as Message);
   db.conversations ??= [];
   db.messages ??= [];
   return db;
@@ -171,6 +250,11 @@ export async function readDB(): Promise<DB> {
 // Atomic read-modify-write via RTDB root transaction (safe across instances).
 // `fn` must be SYNCHRONOUS and side-effect free (may run more than once).
 // Do NOT call readDB inside `fn`.
+//
+// PREFER transactCollection() below for single-collection writes: a root
+// transaction ships the ENTIRE database on every write (users+posts+
+// comments+messages…) and serializes all writers against each other.
+// Scoped transactions move O(DB) → O(collection).
 export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
   return enqueue(async () => {
     assertRtdb();
@@ -194,6 +278,437 @@ export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
     }
     return captured;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Scoped access: per-collection reads, indexed queries, and subtree
+// transactions. A social feed with 100k posts must never download 100k
+// posts to render 20 — these primitives are how every hot path avoids the
+// full-root read. Writes stay atomic per collection (RTDB transactions).
+// ---------------------------------------------------------------------------
+
+export type CollectionName =
+  | "users"
+  | "posts"
+  | "comments"
+  | "likes"
+  | "follows"
+  | "notifications"
+  | "conversations"
+  | "messages";
+
+type CollectionRow = {
+  users: User;
+  posts: Post;
+  comments: Comment;
+  likes: Like;
+  follows: Follow;
+  notifications: Notification;
+  conversations: Conversation;
+  messages: Message;
+};
+
+function normalizeRow<N extends CollectionName>(
+  name: N,
+  row: CollectionRow[N]
+): CollectionRow[N] {
+  // Generic N doesn't narrow with switch — cast through unknown per branch.
+  if (name === "users") return normalizeUser(row as unknown as User) as CollectionRow[N];
+  if (name === "posts") return normalizePost(row as unknown as Post) as CollectionRow[N];
+  if (name === "comments")
+    return normalizeComment(row as unknown as Comment) as CollectionRow[N];
+  if (name === "messages")
+    return normalizeMessage(row as unknown as Message) as CollectionRow[N];
+  return row;
+}
+
+// RTDB stores our arrays natively but returns objects for query results —
+// normalize both shapes to a plain array.
+function toRows<N extends CollectionName>(
+  name: N,
+  val: unknown
+): CollectionRow[N][] {
+  const raw: unknown[] = Array.isArray(val)
+    ? val
+    : val && typeof val === "object"
+      ? Object.values(val as Record<string, unknown>)
+      : [];
+  return raw
+    .filter((r) => r && typeof r === "object")
+    .map((r) => normalizeRow(name, r as CollectionRow[N]));
+}
+
+// Read ONE collection (never the root). O(collection), not O(database).
+export async function readCollection<N extends CollectionName>(
+  name: N
+): Promise<CollectionRow[N][]> {
+  assertRtdb();
+  const snap = await rtdb(`${name}.get`, () =>
+    getRtdb().ref(`/${name}`).get()
+  );
+  return toRows(name, snap.val());
+}
+
+export type CollectionQuery = {
+  orderBy: string;
+  equalTo?: string | number | boolean | null;
+  /** inclusive lower bound (prefix search start) */
+  startAt?: string | number;
+  /** inclusive upper bound */
+  endAt?: string | number;
+  /** exclusive upper bound for cursor pagination (usually a createdAt ISO) */
+  endBefore?: string | number;
+  /** newest-first page size (limitToLast) */
+  limit?: number;
+  /** oldest-first page size (limitToFirst) — for prefix ranges */
+  first?: number;
+};
+
+// Indexed server-side query with newest-first cursor pagination.
+// Requires matching `.indexOn` entries in database.rules.json — WITHOUT
+// them RTDB rejects the query ("Index not defined"). When that happens we
+// transparently fall back to a full-collection scan filtered in memory:
+// correct everywhere, fast once rules are deployed. Deploy rules with:
+//   firebase deploy --only database   (or paste database.rules.json in console)
+// Returns rows in ASCENDING orderBy order (reverse for display).
+export async function queryCollection<N extends CollectionName>(
+  name: N,
+  q: CollectionQuery
+): Promise<CollectionRow[N][]> {
+  assertRtdb();
+  try {
+    const snap = await rtdb(`${name}.query`, () => {
+      let query = getRtdb().ref(`/${name}`).orderByChild(q.orderBy);
+      if (q.equalTo !== undefined) query = query.equalTo(q.equalTo);
+      if (q.startAt !== undefined) query = query.startAt(q.startAt);
+      if (q.endAt !== undefined) query = query.endAt(q.endAt);
+      else if (q.endBefore !== undefined) query = query.endBefore(q.endBefore);
+      if (q.limit !== undefined) query = query.limitToLast(q.limit);
+      else if (q.first !== undefined) query = query.limitToFirst(q.first);
+      return query.get();
+    });
+    return toRows(name, snap.val());
+  } catch (e) {
+    return queryFallback(name, q, e);
+  }
+}
+
+// Logged once per query shape (not per request) so a missing index doesn't
+// spam the console on every poll — the first line tells you what to deploy.
+const warnedFallbacks = new Set<string>();
+
+function warnFallback(name: string, orderBy: string, cause: unknown): void {
+  const key = `${name}:${orderBy}`;
+  if (warnedFallbacks.has(key)) return;
+  warnedFallbacks.add(key);
+  console.warn(
+    `[${name}.query] no "${orderBy}" index in database rules — using slower full scan (results still correct). Deploy database.rules.json to silence this. Cause: ${(cause as Error)?.message ?? cause}`
+  );
+}
+function applyQueryFilter<T>(
+  rows: T[],
+  val: (r: T) => string | number | boolean | null,
+  q: CollectionQuery
+): T[] {
+  const cmp = (
+    a: string | number | boolean | null,
+    b: string | number | boolean | null
+  ): number => {
+    if (a === b) return 0;
+    if (a === null) return -1;
+    if (b === null) return 1;
+    return a < b ? -1 : 1;
+  };
+  let out = rows.filter((r) => {
+    const v = val(r);
+    if (q.equalTo !== undefined && v !== q.equalTo) return false;
+    if (q.startAt !== undefined && cmp(v, q.startAt) < 0) return false;
+    if (q.endAt !== undefined && cmp(v, q.endAt) > 0) return false;
+    if (q.endBefore !== undefined && cmp(v, q.endBefore) >= 0) return false;
+    return true;
+  });
+  out = out.sort((a, b) => cmp(val(a), val(b)));
+  if (q.limit !== undefined) out = out.slice(-q.limit);
+  else if (q.first !== undefined) out = out.slice(0, q.first);
+  return out;
+}
+
+function orderValue<N extends CollectionName>(
+  name: N,
+  q: CollectionQuery,
+  r: CollectionRow[N]
+): string | number | boolean | null {
+  const v = (r as unknown as Record<string, unknown>)[q.orderBy];
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+    return v;
+  return null;
+}
+
+async function queryFallback<N extends CollectionName>(
+  name: N,
+  q: CollectionQuery,
+  cause: unknown
+): Promise<CollectionRow[N][]> {
+  warnFallback(name, q.orderBy, cause);
+  const rows = await readCollection(name);
+  return applyQueryFilter(rows, (r) => orderValue(name, q, r), q);
+}
+
+// Same as queryCollection but keeps storage keys (needed for targeted
+// deletes/updates of matched rows without a full-collection transaction).
+export async function queryCollectionEntries<N extends CollectionName>(
+  name: N,
+  q: CollectionQuery
+): Promise<{ key: string; row: CollectionRow[N] }[]> {
+  assertRtdb();
+  const collect = () => {
+    let query = getRtdb().ref(`/${name}`).orderByChild(q.orderBy);
+    if (q.equalTo !== undefined) query = query.equalTo(q.equalTo);
+    if (q.startAt !== undefined) query = query.startAt(q.startAt);
+    if (q.endAt !== undefined) query = query.endAt(q.endAt);
+    else if (q.endBefore !== undefined) query = query.endBefore(q.endBefore);
+    if (q.limit !== undefined) query = query.limitToLast(q.limit);
+    else if (q.first !== undefined) query = query.limitToFirst(q.first);
+    return query;
+  };
+  try {
+    const out: { key: string; row: CollectionRow[N] }[] = [];
+    await rtdb(`${name}.query`, () =>
+      collect()
+        .get()
+        .then((snap) => {
+          snap.forEach((child) => {
+            const v = child.val();
+            if (v && typeof v === "object" && child.key !== null) {
+              out.push({
+                key: child.key,
+                row: normalizeRow(name, v as CollectionRow[N]),
+              });
+            }
+            return false;
+          });
+          return undefined;
+        })
+    );
+    return out;
+  } catch (e) {
+    warnFallback(name, q.orderBy, e);
+    // Key-preserving full scan: read the raw node so storage indices survive.
+    const snap = await rtdb(`${name}.get`, () =>
+      getRtdb().ref(`/${name}`).get()
+    );
+    const val = snap.val();
+    const all: { key: string; row: CollectionRow[N] }[] = [];
+    if (Array.isArray(val)) {
+      val.forEach((v, i) => {
+        if (v && typeof v === "object")
+          all.push({ key: String(i), row: normalizeRow(name, v) });
+      });
+    } else if (val && typeof val === "object") {
+      for (const [key, v] of Object.entries(val)) {
+        if (v && typeof v === "object")
+          all.push({ key, row: normalizeRow(name, v as CollectionRow[N]) });
+      }
+    }
+    return applyQueryFilter(
+      all,
+      ({ row }) => orderValue(name, q, row),
+      q
+    );
+  }
+}
+
+// Atomic read-modify-write on ONE collection subtree.
+export async function transactCollection<N extends CollectionName, T>(
+  name: N,
+  fn: (rows: CollectionRow[N][]) => T
+): Promise<T> {
+  return enqueue(async () => {
+    assertRtdb();
+    let captured: T | undefined;
+    let ran = false;
+    const res = await rtdb(`${name}.transaction`, () =>
+      getRtdb()
+        .ref(`/${name}`)
+        .transaction((current: unknown) => {
+          const rows = toRows(name, current);
+          captured = fn(rows);
+          ran = true;
+          return rows;
+        })
+    );
+    if (!res.committed || !ran || captured === undefined) {
+      throw new Error("rtdb transaction conflict — retry the request");
+    }
+    return captured;
+  });
+}
+
+// Append one row to a collection, atomically. Returns the stored row.
+export async function pushToCollection<N extends CollectionName>(
+  name: N,
+  row: CollectionRow[N]
+): Promise<CollectionRow[N]> {
+  return transactCollection(name, (rows) => {
+    rows.push(normalizeRow(name, row));
+    return row;
+  });
+}
+
+// Direct leaf write (no read). For counters and flags only — callers must
+// have computed the value from a consistent read or an atomic increment
+// performed inside transactCollection.
+export async function setPath(path: string, value: unknown): Promise<void> {
+  assertRtdb();
+  await rtdb(`set:${path}`, () => getRtdb().ref(path).set(value));
+}
+
+// Multi-path fan-out in ONE round trip (atomic across the listed leaves).
+export async function updatePaths(
+  paths: Record<string, unknown>
+): Promise<void> {
+  assertRtdb();
+  const keys = Object.keys(paths);
+  if (keys.length === 0) return;
+  await rtdb("multi.update", () => getRtdb().ref("/").update(paths));
+}
+
+// Raw subtree read (for keyed maps). Returns null when absent.
+export async function readPath<T>(path: string): Promise<T | null> {
+  assertRtdb();
+  const snap = await rtdb(`get:${path}`, () => getRtdb().ref(path).get());
+  return (snap.val() ?? null) as T | null;
+}
+
+// O(1) user lookup via the /users-by-id map (dual-written on signup +
+// profile edit). Falls back to a legacy array scan for pre-map accounts.
+export async function readUserById(id: string): Promise<User | null> {
+  assertRtdb();
+  try {
+    const snap = await rtdb(`user.map:${id}`, () =>
+      getRtdb().ref(`/users-by-id/${id}`).get()
+    );
+    const v = snap.val();
+    if (v && typeof v === "object") return normalizeUser(v as User);
+  } catch {
+    /* fall through to legacy scan */
+  }
+  const users = await readCollection("users");
+  return users.find((u) => u.id === id) ?? null;
+}
+
+export async function writeUserById(id: string, user: User): Promise<void> {
+  await setPath(`/users-by-id/${id}`, user);
+}
+
+// Atomic leaf transaction — O(1) regardless of collection size. This is
+// the write primitive that scales: toggling a like touches one leaf, not
+// a million-row array.
+export async function transactLeaf<T>(
+  path: string,
+  fn: (current: unknown) => T | undefined
+) {
+  assertRtdb();
+  return rtdb(`tx:${path}`, () => getRtdb().ref(path).transaction(fn));
+}
+
+// Conflict-free push-key (firebase push ids are time-ordered + unique).
+// Writes via setPath need no transaction at all.
+export function newPushKey(collection: string): string {
+  assertRtdb();
+  const key = getRtdb().ref(`/${collection}`).push().key;
+  if (!key) throw new Error("push key failed");
+  return key;
+}
+
+// Chunked multi-path write for backfills/migrations (keeps each update
+// small enough to stay fast and atomic).
+export async function chunkedUpdate(
+  entries: [string, unknown][],
+  size = 500
+): Promise<void> {
+  for (let i = 0; i < entries.length; i += size) {
+    await updatePaths(Object.fromEntries(entries.slice(i, i + size)));
+  }
+}
+
+// O(1) post lookup via /posts-by-id (dual-written on create/edit, removed
+// on delete). Falls back to a legacy array scan for pre-map rows.
+export async function readPostById(id: string): Promise<Post | null> {
+  assertRtdb();
+  try {
+    const snap = await rtdb(`post.map:${id}`, () =>
+      getRtdb().ref(`/posts-by-id/${id}`).get()
+    );
+    const v = snap.val();
+    if (v && typeof v === "object") return normalizePost(v as Post);
+  } catch {
+    /* fall through to legacy scan */
+  }
+  const posts = await readCollection("posts");
+  return posts.find((p) => p.id === id) ?? null;
+}
+
+export async function writePostById(id: string, post: Post): Promise<void> {
+  await setPath(`/posts-by-id/${id}`, post);
+}
+
+export async function removePostById(id: string): Promise<void> {
+  await setPath(`/posts-by-id/${id}`, null);
+}
+
+// Handle pointers: /users-by-handle/{lower(login42|name|id)} -> userId.
+// Written on signup + rename; lets profile pages resolve O(1).
+export async function indexUserHandles(
+  user: Pick<User, "id" | "login42" | "name">,
+  prevName?: string | null
+): Promise<void> {
+  const paths: Record<string, unknown> = {
+    [`/users-by-handle/${user.id.toLowerCase()}`]: user.id,
+    [`/users-by-handle/${user.name.toLowerCase()}`]: user.id,
+  };
+  if (user.login42) paths[`/users-by-handle/${user.login42.toLowerCase()}`] = user.id;
+  if (
+    prevName &&
+    prevName.toLowerCase() !== user.name.toLowerCase() &&
+    (!user.login42 || prevName.toLowerCase() !== user.login42.toLowerCase())
+  ) {
+    paths[`/users-by-handle/${prevName.toLowerCase()}`] = null;
+  }
+  await updatePaths(paths);
+}
+
+export async function resolveUserId(handle: string): Promise<string | null> {
+  assertRtdb();
+  const h = handle.replace(/^@/, "").toLowerCase();
+  for (const key of [`/users-by-handle/${h}`, `/users-by-handle/@${h}`]) {
+    try {
+      const snap = await rtdb(`handle:${h}`, () => getRtdb().ref(key).get());
+      const v = snap.val();
+      if (typeof v === "string" && v) return v;
+    } catch {
+      /* try next key, then legacy scan */
+    }
+  }
+  const users = await readCollection("users");
+  return (
+    users.find(
+      (u) =>
+        u.login42?.toLowerCase() === h ||
+        u.name.toLowerCase() === h ||
+        u.id === handle
+    )?.id ?? null
+  );
+}
+
+// Cached profile read (30s TTL + single-flight). Profiles are read on
+// nearly every request and change rarely — this absorbs the burst.
+export function cachedUserById(id: string): Promise<User | null> {
+  return cached(`user:${id}`, 30_000, () => readUserById(id));
+}
+
+export function bustUserCache(id: string): void {
+  invalidatePrefix(`user:${id}`);
 }
 
 export function uid(prefix = "id"): string {

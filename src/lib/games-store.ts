@@ -8,7 +8,7 @@ import {
   isBotId,
 } from "@/lib/games/bot";
 import { tickChessClock } from "@/lib/games/chess";
-import { readDB } from "@/lib/db";
+import { cachedUserById } from "@/lib/db";
 import {
   freshTTT,
   tttWinner,
@@ -324,33 +324,11 @@ function mini(u: {
     : null;
 }
 
-// Profile lookups used to readDB() — the ENTIRE root (users+posts+comments+
-// messages) — on every game request. Names/avatars change rarely, so a short
-// single-flight cache keeps headers correct while cutting ~all of that cost.
-const PROFILE_TTL_MS = 5_000;
-const profileCache = new Map<
-  string,
-  { at: number; promise: Promise<MiniProfile | null> }
->();
-
-async function fetchProfile(id: string): Promise<MiniProfile | null> {
-  const db = await readDB();
-  const u = db.users.find((x) => x.id === id) ?? null;
-  return mini(u);
-}
-
+// Profile lookups are O(1) map reads + the shared 30s single-flight cache
+// (skill: server-cache-lru) — never the full root.
 async function cachedProfile(id: string): Promise<MiniProfile | null> {
-  const hit = profileCache.get(id);
-  if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.promise;
-  const promise = fetchProfile(id).catch(() => null);
-  profileCache.set(id, { at: Date.now(), promise });
-  // opportunistic pruning (cache only ever holds a handful of ids)
-  if (profileCache.size > 100) {
-    const now = Date.now();
-    for (const [k, v] of profileCache)
-      if (now - v.at > PROFILE_TTL_MS * 2) profileCache.delete(k);
-  }
-  return promise;
+  const u = await cachedUserById(id).catch(() => null);
+  return mini(u);
 }
 
 // Attach public mini-profiles (names/avatars for the board header).

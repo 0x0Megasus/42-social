@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { updateDB, userPublic } from "@/lib/db";
+import {
+  bustUserCache,
+  indexUserHandles,
+  readCollection,
+  readUserById,
+  updatePaths,
+  userPublic,
+  writeUserById,
+} from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -70,14 +78,29 @@ export async function PATCH(req: Request) {
       { status: 400 }
     );
   const normalized = normalizeSocials(socials);
-  const user = await updateDB((db) => {
-    const u = db.users.find((x) => x.id === session.sub);
-    if (!u) return null;
-    u.name = cleanName;
-    u.bio = cleanBio;
-    u.socials = normalized;
-    return userPublic(u);
-  });
-  if (!user) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ user });
+  const prev = await readUserById(session.sub);
+  if (!prev) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const next = {
+    ...prev,
+    name: cleanName,
+    bio: cleanBio,
+    socials: normalized,
+    nameLower: cleanName.toLowerCase(),
+  };
+  // Dual-write: by-id map (O(1) reads) + legacy array leaf. Array index
+  // resolved fresh per call (user rows are append-only → indices stable).
+  await writeUserById(session.sub, next).catch(() => null);
+  const users = await readCollection("users");
+  const idx = users.findIndex((u) => u.id === session.sub);
+  if (idx >= 0) {
+    await updatePaths({
+      [`/users/${idx}/name`]: cleanName,
+      [`/users/${idx}/bio`]: cleanBio,
+      [`/users/${idx}/socials`]: normalized,
+      [`/users/${idx}/nameLower`]: next.nameLower,
+    }).catch(() => null);
+  }
+  await indexUserHandles(next, prev.name).catch(() => null);
+  bustUserCache(session.sub);
+  return NextResponse.json({ user: userPublic(next) });
 }

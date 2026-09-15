@@ -2,10 +2,14 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "users": { ".indexOn": ["createdAt"] },
+    "users": { ".indexOn": ["createdAt", "name", "nameLower"] },
+    "users-by-id": { ".indexOn": ["createdAt", "name"] },
     "posts": { ".indexOn": ["createdAt", "authorId"] },
-    "comments": { ".indexOn": ["createdAt", "postId"] },
-    "messages": { ".indexOn": ["createdAt", "convoId"] },
-    "notifications": { ".indexOn": ["createdAt", "userId"] }
+    "comments": { ".indexOn": ["createdAt", "postId", "id"] },
+    "likes": { ".indexOn": ["postId", "userId"] },
+    "follows": { ".indexOn": ["followerId", "followingId"] },
+    "notifications": { ".indexOn": ["createdAt", "userId"] },
+    "conversations": { ".indexOn": ["createdAt", "aId", "bId"] },
+    "messages": { ".indexOn": ["createdAt", "convoId", "id"] }
   }
 }

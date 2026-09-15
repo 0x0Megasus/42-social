@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { updateDB } from "@/lib/db";
+import {
+  queryCollectionEntries,
+  readCollection,
+  setPath,
+  type Message,
+} from "@/lib/db";
+import { destroyAssets } from "@/lib/cloudinary-admin";
+import { publicIdFromUrl } from "@/lib/cloudinary";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -17,16 +24,24 @@ async function ownMessage(
     deleted: boolean;
   }) => void
 ) {
-  return updateDB((db) => {
-    const convo = db.conversations.find((c) => c.id === convoId);
-    if (!convo || (convo.aId !== me && convo.bId !== me)) return null;
-    const m = db.messages.find(
-      (x) => x.id === msgId && x.convoId === convoId
-    );
-    if (!m || m.senderId !== me || m.deleted) return null;
-    mutate(m);
-    return { ...m, mine: true };
-  });
+  const convos = await readCollection("conversations");
+  const convo = convos.find((c) => c.id === convoId);
+  if (!convo || (convo.aId !== me && convo.bId !== me)) return null;
+  // Indexed id lookup + direct write (see comments/[id] for why this is
+  // read-verify-write instead of a leaf transaction).
+  const hits = await queryCollectionEntries("messages", {
+    orderBy: "id",
+    equalTo: msgId,
+    limit: 5,
+  }).catch(() => []);
+  const hit = hits.find(
+    ({ row }) => row.convoId === convoId && row.senderId === me && !row.deleted
+  );
+  if (!hit) return null;
+  const next: Message = { ...hit.row };
+  mutate(next);
+  await setPath(`/messages/${hit.key}`, next);
+  return { ...next, mine: true };
 }
 
 // PATCH -> edit own message. Peer sees `edited: true`.
@@ -55,6 +70,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 
 // DELETE -> tombstone. Peer sees "message deleted" instead of content.
+// Attached voice bytes are reclaimed from the bucket (best-effort).
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -64,5 +80,9 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     m.deleted = true;
   });
   if (!msg) return NextResponse.json({ error: "not found" }, { status: 404 });
+  void destroyAssets([
+    msg.attachment?.publicId,
+    publicIdFromUrl(msg.attachment?.url ?? ""),
+  ]);
   return NextResponse.json({ message: msg });
 }

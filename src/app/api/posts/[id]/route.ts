@@ -1,33 +1,73 @@
 import { NextResponse } from "next/server";
-import { readDB, updateDB, userPublic } from "@/lib/db";
+import {
+  cachedUserById,
+  queryCollectionEntries,
+  readCollection,
+  readPath,
+  readPostById,
+  updatePaths,
+  writePostById,
+  type Post,
+} from "@/lib/db";
 import { isSupportUser } from "@/lib/support";
+import { destroyAssets } from "@/lib/cloudinary-admin";
+import { publicIdFromUrl } from "@/lib/cloudinary";
+import { recountPost } from "@/lib/counters";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// GET /api/posts/[id] — requires session, returns enriched post
+// GET /api/posts/[id] — requires session, returns enriched post.
+// O(1) map read + two tiny indexed lookups (likes, liked-by-me).
 export async function GET(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
-  const db = await readDB();
-  const p = db.posts.find((x) => x.id === id && !x.deleted);
-  if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const author = db.users.find((u) => u.id === p.authorId);
-  const likes = db.likes.filter((l) => l.postId === id).length;
-  const comments = db.comments.filter((c) => c.postId === id && !c.deleted).length;
-  const liked = db.likes.some((l) => l.postId === id && l.userId === session.sub);
+  const p = await readPostById(id);
+  if (!p || p.deleted)
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  const [likeMap, myLike] = await Promise.all([
+    readPath<Record<string, true>>(`/likes-by-post/${id}`).catch(() => null),
+    readPath<unknown>(`/likes-by-post/${id}/${session.sub}`).catch(() => null),
+  ]);
+  let likes =
+    likeMap && typeof likeMap === "object"
+      ? Object.values(likeMap).filter(Boolean).length
+      : 0;
+  let liked = myLike != null;
+  // Legacy union: pre-map rows still count until mirrored.
+  const legacy = await queryCollectionEntries("likes", {
+    orderBy: "postId",
+    equalTo: id,
+    limit: 100_000,
+  }).catch(() => []);
+  for (const { row } of legacy) {
+    if (
+      row.userId !== undefined &&
+      !(likeMap && (likeMap as Record<string, unknown>)[row.userId])
+    ) {
+      likes++;
+      if (row.userId === session.sub) liked = true;
+    }
+  }
   const post = {
     ...p,
-    author: author ? userPublic(author) : null,
-    likes,
-    comments,
+    author: p.author ?? null,
+    likes: Math.max(p.likesCount ?? 0, likes),
+    comments: p.commentsCount ?? 0,
     liked,
   };
-  return NextResponse.json({ post });
+  return NextResponse.json(
+    { post },
+    {
+      headers: {
+        "Cache-Control": "private, max-age=5, stale-while-revalidate=15",
+      },
+    }
+  );
 }
 
 async function ownPost(
@@ -35,16 +75,38 @@ async function ownPost(
   me: string,
   mutate: (p: { body: string; edited: boolean; deleted: boolean }) => void
 ) {
-  return updateDB((db) => {
-    const p = db.posts.find((x) => x.id === postId);
-    if (!p || p.authorId !== me || p.deleted) return null;
-    mutate(p);
-    const likes = db.likes.filter((l) => l.postId === postId).length;
-    const comments = db.comments.filter(
-      (c) => c.postId === postId && !c.deleted
-    ).length;
-    return { ...p, likes, comments };
-  });
+  const p = await readPostById(postId);
+  if (!p || p.authorId !== me || p.deleted) return null;
+  const next: Post = { ...p };
+  mutate(next);
+  // Dual-write: map row (O(1) future reads) + array leaf for legacy scans.
+  await writePostById(postId, next);
+  const posts = await readCollection("posts");
+  const idx = posts.findIndex((x) => x.id === postId);
+  if (idx >= 0) {
+    await updatePaths({
+      [`/posts/${idx}/body`]: next.body,
+      [`/posts/${idx}/edited`]: next.edited,
+      [`/posts/${idx}/deleted`]: next.deleted,
+    }).catch(() => null);
+  }
+  const counts = await recountPost(postId).catch(() => null);
+  const author = await cachedUserById(p.authorId).catch(() => null);
+  return {
+    ...next,
+    author: next.author ??
+      (author
+        ? {
+            id: author.id,
+            name: author.name,
+            login42: author.login42,
+            avatar: author.avatar,
+            campus: author.campus,
+          }
+        : null),
+    likes: counts?.likes ?? next.likesCount ?? 0,
+    comments: counts?.comments ?? next.commentsCount ?? 0,
+  };
 }
 
 // PATCH /api/posts/[id] { body } — edit own post. Readers see "Edited".
@@ -72,29 +134,56 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json({ post });
 }
 
-// DELETE /api/posts/[id] — hard delete. The post row is removed from the DB
-// together with its likes + comments, so no orphan rows pile up.
-// (Notifications referencing it are kept as history; opening one shows the
-// "no longer available" notice via the feed focus guard.)
+// DELETE /api/posts/[id] — hard delete: map row + array tombstone removed,
+// engagement subtrees dropped, legacy rows nulled. Notifications referencing
+// it are kept as history (feed focus guard explains the tombstone).
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
-  const removed = await updateDB((db) => {
-    const idx = db.posts.findIndex((x) => x.id === id);
-    if (idx === -1) return null;
-    const p = db.posts[idx];
-    // Owners delete their own live posts; support can remove anything,
-    // including legacy soft-deleted rows (p.deleted cleanup).
-    const me = db.users.find((u) => u.id === session.sub);
-    const mine = p.authorId === session.sub && !p.deleted;
-    if (!mine && !isSupportUser(me)) return null;
-    db.posts.splice(idx, 1);
-    db.likes = db.likes.filter((l) => l.postId !== id);
-    db.comments = db.comments.filter((c) => c.postId !== id);
-    return { id };
-  });
-  if (!removed) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const p = await readPostById(id);
+  if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const me = await cachedUserById(session.sub).catch(() => null);
+  const mine = p.authorId === session.sub && !p.deleted;
+  if (!mine && !isSupportUser(me ?? undefined))
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  const [posts, likeEntries, commentEntries, likers] = await Promise.all([
+    readCollection("posts"),
+    queryCollectionEntries("likes", {
+      orderBy: "postId",
+      equalTo: id,
+      limit: 100_000,
+    }).catch(() => []),
+    queryCollectionEntries("comments", {
+      orderBy: "postId",
+      equalTo: id,
+      limit: 100_000,
+    }).catch(() => []),
+    readPath<Record<string, true>>(`/likes-by-post/${id}`).catch(() => null),
+  ]);
+  const idx = posts.findIndex((x) => x.id === id);
+  const paths: Record<string, unknown> = {
+    [`/posts-by-id/${id}`]: null,
+    [`/likes-by-post/${id}`]: null,
+  };
+  if (idx >= 0) paths[`/posts/${idx}`] = null;
+  for (const { key } of likeEntries) paths[`/likes/${key}`] = null;
+  for (const { key } of commentEntries) paths[`/comments/${key}`] = null;
+  // Mirror-clean each liker's by-user leaf (exact, from the map we drop).
+  if (likers && typeof likers === "object") {
+    for (const liker of Object.keys(likers))
+      paths[`/likes-by-user/${liker}/${id}`] = null;
+  }
+  await updatePaths(paths);
+  // Reclaim Cloudinary bytes (best-effort, after RTDB). public_ids are
+  // authoritative; URL-derived ids cover rows written before cloudIds.
+  void destroyAssets([
+    ...(p.cloudIds ?? []),
+    publicIdFromUrl(p.image ?? ""),
+    publicIdFromUrl(p.thumb ?? ""),
+    publicIdFromUrl(p.video?.url ?? ""),
+    publicIdFromUrl(p.video?.thumb ?? ""),
+  ]);
   return NextResponse.json({ ok: true, id });
 }

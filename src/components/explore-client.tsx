@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Avatar } from "@/components/post-card";
 import { FounderBadge } from "@/components/founder-badge";
 import { FollowButton } from "@/components/auth-buttons";
 import { MessageButton } from "@/components/message-button";
 import { LiveDot } from "@/components/presence";
+import { api } from "@/lib/api";
 
 export type ExploreUser = {
   id: string;
@@ -25,16 +26,49 @@ export type ExploreUser = {
 
 export function ExploreClient({ users }: { users: ExploreUser[] }) {
   const [q, setQ] = useState("");
+  const [results, setResults] = useState<ExploreUser[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Server-side prefix search (debounced): the full directory never ships
+  // to the client. Empty query falls back to the server-rendered page.
+  // Driven from the input handler (not an effect) to keep renders pure.
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  function onQuery(value: string) {
+    setQ(value);
+    if (timer.current) clearTimeout(timer.current);
+    const term = value.trim();
+    if (!term) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await api(
+          `/api/users?q=${encodeURIComponent(term)}&limit=50`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const d = await res.json();
+        if (Array.isArray(d.users)) setResults(d.users);
+      } catch {
+        /* keep previous results */
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  }
+
   const query = q.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (!query) return users;
-    return users.filter((u) =>
-      [u.name, u.login42 ?? "", u.campus ?? "", `@${u.login42 ?? u.name}`]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [users, query]);
+  const filtered = results ?? users;
+  const empty = query.length > 0 && !searching && filtered.length === 0;
 
   return (
     <div className="space-y-3">
@@ -50,7 +84,7 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
         <input
           id="explore-search"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => onQuery(e.target.value)}
           placeholder="Search for a student.."
           autoComplete="off"
           maxLength={60}
@@ -58,7 +92,7 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
         />
         {q && (
           <button
-            onClick={() => setQ("")}
+            onClick={() => onQuery("")}
             aria-label="Clear search"
             className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
           >
@@ -67,12 +101,20 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
         )}
       </div>
 
-      {users.length === 0 && (
+      {users.length === 0 && !query && (
         <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-[14px] text-zinc-500 dark:border-zinc-700">
           Nobody here yet. Invite your peers.
         </p>
       )}
-      {users.length > 0 && filtered.length === 0 && (
+      {searching && (
+        <p
+          role="status"
+          className="rounded-2xl border border-zinc-200 p-4 text-center text-[13px] text-zinc-500 dark:border-zinc-800"
+        >
+          Searching…
+        </p>
+      )}
+      {empty && (
         <p
           role="status"
           className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-[14px] text-zinc-500 dark:border-zinc-700"

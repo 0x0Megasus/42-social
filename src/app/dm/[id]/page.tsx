@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/session";
-import { readDB, userPublic } from "@/lib/db";
+import { cachedUserById, readCollection, userPublic } from "@/lib/db";
 import { Avatar } from "@/components/post-card";
 import { DmThread } from "@/components/dm-thread";
 import { LiveDot, PresenceText } from "@/components/presence";
@@ -18,14 +18,17 @@ export default async function DmChat({
   const { id } = await params;
   const session = await getSession();
   if (!session) redirect("/login");
-  const db = await readDB();
-  const convo = db.conversations.find((c) => c.id === id);
+  // One collection scan (conversations only — no messages) + cached users.
+  const convos = await readCollection("conversations");
+  const convo = convos.find((c) => c.id === id);
   if (!convo || (convo.aId !== session.sub && convo.bId !== session.sub)) {
     redirect("/dm");
   }
   const peerId = convo.aId === session.sub ? convo.bId : convo.aId;
-  const peer = db.users.find((u) => u.id === peerId);
-  const me = db.users.find((u) => u.id === session.sub);
+  const [peer, me] = await Promise.all([
+    cachedUserById(peerId),
+    cachedUserById(session.sub),
+  ]);
   const pub = peer ? userPublic(peer) : null;
   const handle = pub?.login42 ?? pub?.name ?? "?";
   const peerOnline = peer

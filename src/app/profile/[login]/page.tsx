@@ -1,17 +1,24 @@
 import { notFound } from "next/navigation";
-import { readDB, userPublic } from "@/lib/db";
+import {
+  cachedUserById,
+  queryCollection,
+  resolveUserId,
+  userPublic,
+} from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { Avatar } from "@/components/post-card";
 import { PostList } from "@/components/post-list";
 import { FollowButton } from "@/components/auth-buttons";
 import { MessageButton } from "@/components/message-button";
-import { FollowCounts, type FollowUser } from "@/components/follow-counts";
+import { FollowCounts } from "@/components/follow-counts";
 import { EditProfileForm } from "@/components/edit-profile";
 import { SoundSetting } from "@/components/sound-setting";
 import { LiveDot, PresenceText } from "@/components/presence";
 import { FounderBadge } from "@/components/founder-badge";
 import { isSupportUser } from "@/lib/support";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
+import { followListsOf, followingIdsOf } from "@/lib/graph";
+import { enrichPosts } from "@/lib/feed";
 import { getRecords } from "@/lib/games-store";
 import { GAME_LABEL, type GameKind } from "@/lib/games/types";
 import { MapPin, Trophy } from "lucide-react";
@@ -25,46 +32,37 @@ export default async function Profile({
 }) {
   const { login } = await params;
   const handle = decodeURIComponent(login).replace(/^@/, "");
-  const [db, session] = await Promise.all([readDB(), getSession()]);
-  const user = db.users.find(
-    (u) =>
-      u.login42?.toLowerCase() === handle.toLowerCase() ||
-      u.name.toLowerCase() === handle.toLowerCase() ||
-      u.id === handle
-  );
+  const session = await getSession();
+  // O(1) handle resolution (login42 / name / id pointers, legacy fallback).
+  const userId = await resolveUserId(handle);
+  if (!userId) notFound();
+  const user = await cachedUserById(userId);
   if (!user) notFound();
   const pub = userPublic(user);
-  const posts = db.posts
-    .filter((p) => p.authorId === user.id && !p.deleted)
+  // Latest 30 posts via indexed author query + shared enrichment.
+  const mine = await queryCollection("posts", {
+    orderBy: "authorId",
+    equalTo: user.id,
+    limit: 100_000,
+  }).catch(() => []);
+  const live = mine
+    .filter((p) => !p.deleted)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map((p) => ({
-      ...p,
-      author: pub,
-      likes: db.likes.filter((l) => l.postId === p.id).length,
-      comments: db.comments.filter((c) => c.postId === p.id && !c.deleted)
-        .length,
-      liked: session
-        ? db.likes.some((l) => l.postId === p.id && l.userId === session.sub)
-        : false,
-    }));
-  const followerList = db.follows
-    .filter((f) => f.followingId === user.id)
-    .map((f) => db.users.find((u) => u.id === f.followerId))
-    .filter((u): u is NonNullable<typeof u> => !!u)
-    .map((u): FollowUser => ({ id: u.id, name: u.name, handle: u.login42 ?? u.name, avatar: u.avatar ?? null }));
-  const followingList = db.follows
-    .filter((f) => f.followerId === user.id)
-    .map((f) => db.users.find((u) => u.id === f.followingId))
-    .filter((u): u is NonNullable<typeof u> => !!u)
-    .map((u): FollowUser => ({ id: u.id, name: u.name, handle: u.login42 ?? u.name, avatar: u.avatar ?? null }));
-  const isFollowing = session
-    ? db.follows.some(
-        (f) => f.followerId === session.sub && f.followingId === user.id
-      )
-    : false;
+    .slice(0, 30);
+  const [posts, lists, records, meUser] = await Promise.all([
+    enrichPosts(live, session?.sub ?? null),
+    followListsOf(user.id),
+    getRecords(user.id),
+    session ? cachedUserById(session.sub) : Promise.resolve(null),
+  ]);
+  // Patch enriched authors to the full public profile (avatar/campus).
+  for (const p of posts) p.author = { ...pub, isSupport: pub.isSupport ?? null };
+  const myFollowing: string[] = session
+    ? await followingIdsOf(session.sub).catch(() => [])
+    : [];
+  const isFollowing = myFollowing.includes(user.id);
   const isMe = session?.sub === user.id;
   const peerOnline = isOnlineAt((await beatsFor([user.id])).get(user.id));
-  const records = await getRecords(user.id);
   const played = (Object.entries(records) as [string, { w: number; l: number; d: number; best?: number }][])
     .filter(([, r]) => r.w + r.l + r.d > 0);
 
@@ -103,7 +101,7 @@ export default async function Profile({
               <MapPin size={13} /> {pub.campus}
             </span>
           )}
-          <FollowCounts followers={followerList} following={followingList} />
+          <FollowCounts followers={lists.followers} following={lists.following} />
         </div>
         {pub.bio && (
           <p className="mx-auto mt-3 max-w-sm break-words text-[14px] leading-6">{pub.bio}</p>
@@ -159,21 +157,10 @@ export default async function Profile({
         </p>
       ) : (
         <PostList
-          posts={posts.map((p) => ({
-            ...p,
-            author: { ...pub, campus: pub.campus },
-          }))}
-          meName={
-            session
-              ? db.users.find((u) => u.id === session.sub)?.name ?? undefined
-              : undefined
-          }
+          posts={posts}
+          meName={meUser?.name}
           meId={session?.sub}
-          viewerIsSupport={
-            session
-              ? isSupportUser(db.users.find((u) => u.id === session.sub))
-              : false
-          }
+          viewerIsSupport={isSupportUser(meUser)}
         />
       )}
     </div>

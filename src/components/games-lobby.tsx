@@ -30,6 +30,9 @@ export function GamesLobby({
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState<GameKind | null>(null);
   const [botting, setBotting] = useState<GameKind | null>(null);
+  // Solo and Duel share the "backrooms" kind, so they track their own
+  // spinner — otherwise both buttons load together.
+  const [creatingBk, setCreatingBk] = useState<"solo" | "duel" | null>(null);
   const [joining, setJoining] = useState(false);
 
   // Back/forward nav can serve a cached page that predates a room the user
@@ -77,8 +80,8 @@ export function GamesLobby({
   // Backrooms: solo drops straight into a run; duel creates a room whose
   // code you share (join box below also works for duels).
   async function createBackrooms(mode: "solo" | "duel") {
-    if (creating) return;
-    setCreating("backrooms");
+    if (creatingBk) return;
+    setCreatingBk(mode);
     try {
       const res = await api("/api/games", {
         method: "POST",
@@ -90,7 +93,7 @@ export function GamesLobby({
       router.push(`/games/${d.room.id}`);
     } catch (e) {
       toast.error(e instanceof ApiTimeoutError ? e.message : "Couldn't start run.");
-      setCreating(null);
+      setCreatingBk(null);
     }
   }
 
@@ -139,10 +142,10 @@ export function GamesLobby({
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => createBackrooms("solo")}
-                  disabled={creating !== null || botting !== null}
+                  disabled={creatingBk !== null || creating !== null || botting !== null}
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#27272A] bg-[#09090B] py-2.5 text-[14px] font-semibold text-[#F4F4F5] hover:bg-[#18181B] disabled:opacity-70"
                 >
-                  {creating === "backrooms" ? (
+                  {creatingBk === "solo" ? (
                     <LoaderCircle size={16} className="animate-spin" />
                   ) : (
                     <User size={16} />
@@ -151,10 +154,10 @@ export function GamesLobby({
                 </button>
                 <button
                   onClick={() => createBackrooms("duel")}
-                  disabled={creating !== null || botting !== null}
+                  disabled={creatingBk !== null || creating !== null || botting !== null}
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
                 >
-                  {creating === "backrooms" ? (
+                  {creatingBk === "duel" ? (
                     <LoaderCircle size={16} className="animate-spin" />
                   ) : (
                     <Users size={16} />

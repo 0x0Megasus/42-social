@@ -19,19 +19,29 @@ import { ChatSkeleton } from "@/components/skeletons";
 import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { timeAgo } from "@/lib/format";
 import { playMessage } from "@/lib/sound";
+import { formatDuration, mediaStatus, uploadFile } from "@/lib/media";
+import { VoicePlayer, VoiceRecorder, type VoiceClip } from "@/components/voice-note";
 import type { QuotedReply } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 type Msg = {
   id: string;
   body: string;
-  kind: "text" | "sticker";
+  kind: "text" | "sticker" | "voice";
   mine: boolean;
   read: boolean;
   edited: boolean;
   deleted: boolean;
   replyTo: QuotedReply;
   createdAt: string;
+  attachment?: {
+    url: string;
+    duration: number | null;
+    peaks: number[] | null;
+    bytes: number | null;
+    mime: string | null;
+    publicId?: string | null;
+  } | null;
 };
 
 // Discord-inspired palette (own identity, same principles) — black chat theme
@@ -82,6 +92,11 @@ export function DmThread({
   const nearBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const [hasNew, setHasNew] = useState(false);
+  const [canOlder, setCanOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  // Voice preview up: give it the full composer row.
+  const [voicing, setVoicing] = useState(false);
+  const onPreviewing = useCallback((active: boolean) => setVoicing(active), []);
 
   function scrollToBottom(smooth = true) {
     const el = scrollRef.current;
@@ -112,6 +127,7 @@ export function DmThread({
       }
       const d = await res.json();
       const next = d.messages as Msg[];
+      if (typeof d.hasMore === "boolean") setCanOlder(d.hasMore);
       // incoming peer message sound (silent on first load)
       const last = next[next.length - 1];
       if (last && !last.mine && last.id !== lastPeerRef.current) {
@@ -139,14 +155,55 @@ export function DmThread({
             !serverIds.has(m.id) &&
             now - new Date(m.createdAt).getTime() < 15_000
         );
-        const merged = [...next, ...temps];
+        // Union-merge: keep previously loaded older history (polling only
+        // returns the latest page), server version wins on conflict.
+        const byId = new Map(prev.map((m) => [m.id, m]));
+        for (const m of next) byId.set(m.id, m);
+        const merged = [...byId.values(), ...temps];
         merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        return merged;
+        // Cap client memory; older pages refetch via offset.
+        return merged.slice(-1000);
       });
     } catch {
       /* polling failure: keep old messages */
     }
   }, [convoId, router]);
+
+  // Older history: offset pages prepended (deduped by id).
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const offset = msgs.filter((m) => !m.id.startsWith("tmp-")).length;
+      const res = await fetch(
+        `/api/dm/${convoId}/messages?offset=${offset}`
+      );
+      if (!res.ok) return;
+      const d = await res.json();
+      const older = (d.messages ?? []) as Msg[];
+      if (typeof d.hasMore === "boolean") setCanOlder(d.hasMore);
+      if (older.length > 0) {
+        const el = scrollRef.current;
+        const prevH = el?.scrollHeight ?? 0;
+        setMsgs((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          const fresh = older.filter((m) => !seen.has(m.id));
+          const merged = [...fresh, ...prev];
+          merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+          return merged;
+        });
+        // Hold scroll position (content prepended above).
+        requestAnimationFrame(() => {
+          const el2 = scrollRef.current;
+          if (el2) el2.scrollTop += el2.scrollHeight - prevH;
+        });
+      }
+    } catch {
+      /* keep current history */
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [convoId, loadingOlder, msgs]);
 
   useEffect(() => {
     load().finally(() => {
@@ -173,7 +230,7 @@ export function DmThread({
         }
       : null;
     const temp: Msg = {
-      id: `tmp-${Date.now()}`,
+      id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       body: cleanText,
       kind: "text",
       mine: true,
@@ -208,6 +265,80 @@ export function DmThread({
     } catch {
       setMsgs((m) => m.filter((x) => x.id !== temp.id));
       toast.error("Message not sent");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Voice note: upload first (direct browser → bucket), then send. The
+  // optimistic line plays instantly from an object URL until the echo.
+  async function sendVoice(clip: VoiceClip) {
+    if (busy) return;
+    const status = await mediaStatus();
+    if (!status.ready) {
+      toast.error("Voice notes are unavailable right now — try again later.");
+      return;
+    }
+    setBusy(true);
+    const temp: Msg = {
+      id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      body: `Voice message (${formatDuration(clip.duration)})`,
+      kind: "voice",
+      mine: true,
+      read: false,
+      edited: false,
+      deleted: false,
+      replyTo: null,
+      createdAt: new Date().toISOString(),
+      attachment: {
+        url: clip.url,
+        duration: clip.duration,
+        peaks: clip.peaks,
+        bytes: clip.blob.size,
+        mime: clip.mime,
+        publicId: null,
+      },
+    };
+    setMsgs((m) => [...m, temp]);
+    requestAnimationFrame(() => scrollToBottom());
+    try {
+      const up = await uploadFile("voice", myId, clip.blob);
+      const res = await fetch(`/api/dm/${convoId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body: temp.body,
+          kind: "voice",
+          attachment: {
+            url: up.url,
+            duration: clip.duration,
+            peaks: clip.peaks,
+            bytes: up.bytes,
+            mime: clip.mime,
+            publicId: up.publicId,
+          },
+        }),
+      });
+      if (res.status === 429) {
+        const d = await res.json().catch(() => ({}));
+        setMsgs((m) => m.filter((x) => x.id !== temp.id));
+        toast.error(
+          d?.error === "daily-quota"
+            ? "Daily upload limit reached — try again tomorrow."
+            : `Slow down — try again in ${d?.retryAfter ?? 10}s.`
+        );
+        return;
+      }
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      setMsgs((m) => m.map((x) => (x.id === temp.id ? d.message : x)));
+    } catch (e) {
+      setMsgs((m) => m.filter((x) => x.id !== temp.id));
+      toast.error(
+        e instanceof Error && /quota|daily-quota/.test(e.message)
+          ? "Daily upload limit reached — try again tomorrow."
+          : "Voice note not sent"
+      );
     } finally {
       setBusy(false);
     }
@@ -355,6 +486,17 @@ export function DmThread({
                 No messages yet — say hi.
               </p>
             )}
+            {canOlder && msgs.length > 0 && (
+              <div className="flex justify-center px-4 pb-2">
+                <button
+                  onClick={() => void loadOlder()}
+                  disabled={loadingOlder}
+                  className="rounded-full border border-[#2b2d31] bg-[#1e1f22] px-4 py-1.5 text-[12px] font-medium text-[#B5BAC1] transition-colors hover:bg-[#2b2d31] disabled:opacity-60"
+                >
+                  {loadingOlder ? "Loading…" : "Load older messages"}
+                </button>
+              </div>
+            )}
             {msgs.map((m, i) => {
               if (m.deleted) {
                 return (
@@ -404,19 +546,21 @@ export function DmThread({
                   </button>
                   {m.mine && !armingDelete && (
                     <>
-                      <button
-                        onClick={() => {
-                          setEditDraft(m.body);
-                          setEditingId(m.id);
-                          setActiveMsgId(null);
-                          setConfirmDeleteId(null);
-                        }}
-                        aria-label="Edit message"
-                        title="Edit"
-                        className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-white/10 hover:text-[#5865F2]"
-                      >
-                        <Pencil size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                      </button>
+                      {m.kind !== "voice" && (
+                        <button
+                          onClick={() => {
+                            setEditDraft(m.body);
+                            setEditingId(m.id);
+                            setActiveMsgId(null);
+                            setConfirmDeleteId(null);
+                          }}
+                          aria-label="Edit message"
+                          title="Edit"
+                          className="flex h-6 w-6 items-center justify-center rounded sm:h-7 sm:w-7 text-[#B5BAC1] transition-colors hover:bg-white/10 hover:text-[#5865F2]"
+                        >
+                          <Pencil size={14} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => setConfirmDeleteId(m.id)}
                         aria-label="Delete message"
@@ -680,6 +824,23 @@ export function DmThread({
                             </span>
                           </span>
                         </span>
+                      ) : m.kind === "voice" && m.attachment?.url ? (
+                        <span className="block min-w-[220px] max-w-[280px]">
+                          <VoicePlayer
+                            url={m.attachment.url}
+                            duration={m.attachment.duration}
+                            peaks={m.attachment.peaks}
+                          />
+                          {m.edited && (
+                            <span className="ml-1 align-baseline text-[11px] text-[#949BA4]">
+                              (edited)
+                            </span>
+                          )}
+                        </span>
+                      ) : m.kind === "voice" ? (
+                        <p className="text-[13px] italic text-[#949BA4]">
+                          🎤 Voice message unavailable
+                        </p>
                       ) : (
                         <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px] text-[#DBDEE1]">
                           {renderRich(m.body)}
@@ -737,47 +898,58 @@ export function DmThread({
         }}
         className="flex shrink-0 items-end gap-1 border-t border-[#1e1f22] bg-black p-2"
       >
-        <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 500))} />
+        {!voicing && (
+          <EmojiPicker onEmoji={(e) => setDraft((d) => takeGraphemes(d + e, 500))} />
+        )}
 
         <label htmlFor="dm-input" className="sr-only">
           Message
         </label>
-        <div className="relative min-w-0 flex-1">
-          <AutoGrowTextarea
-          ref={dmInputRef}
-          id="dm-input"
-          value={draft}
-          onChange={(e) => setDraft(takeGraphemes(e.target.value, 500))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              e.currentTarget.form?.requestSubmit();
-            }
-          }}
-          placeholder={`Message ${peerName}`}
-          maxLength={1000}
-          autoComplete="off"
-          className="min-h-9 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-[7px] pr-16 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+        {!voicing && (
+          <div className="relative min-w-0 flex-1">
+            <AutoGrowTextarea
+            ref={dmInputRef}
+            id="dm-input"
+            value={draft}
+            onChange={(e) => setDraft(takeGraphemes(e.target.value, 500))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder={`Message ${peerName}`}
+            maxLength={1000}
+            autoComplete="off"
+            className="min-h-9 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-4 py-[7px] pr-16 text-[14px] leading-5 text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          />
+            {draft.length > 0 && (
+              <span
+                aria-hidden
+                className={`pointer-events-none absolute bottom-2 right-2 rounded bg-[#09090B] px-1 text-[10px] tabular-nums ${
+                  graphemeLen(draft) > 450 ? "text-rose-400" : "text-[#949BA4]"
+                }`}
+              >
+                {graphemeLen(draft)}/500
+              </span>
+            )}
+          </div>
+        )}
+        {!voicing && (
+          <button
+            type="submit"
+            disabled={!draft.trim() || busy}
+            suppressHydrationWarning
+            className="h-9 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
+          >
+            Send
+          </button>
+        )}
+        <VoiceRecorder
+          disabled={busy}
+          onReady={(clip) => void sendVoice(clip)}
+          onPreviewing={onPreviewing}
         />
-          {draft.length > 0 && (
-            <span
-              aria-hidden
-              className={`pointer-events-none absolute bottom-2 right-2 rounded bg-[#09090B] px-1 text-[10px] tabular-nums ${
-                graphemeLen(draft) > 450 ? "text-rose-400" : "text-[#949BA4]"
-              }`}
-            >
-              {graphemeLen(draft)}/500
-            </span>
-          )}
-        </div>
-        <button
-          type="submit"
-          disabled={!draft.trim() || busy}
-          suppressHydrationWarning
-          className="h-9 rounded-[2px] bg-[#FAFAFA] px-5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-30"
-        >
-          Send
-        </button>
       </form>
     </div>
   );

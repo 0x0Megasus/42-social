@@ -1,65 +1,108 @@
 import { NextResponse } from "next/server";
-import { readDB, updateDB, uid, userPublic } from "@/lib/db";
+import { pushToCollection, readUserById, uid } from "@/lib/db";
+import { isSupportUser } from "@/lib/support";
 import { getSession } from "@/lib/session";
 import { rateLimit, isDuplicate } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
-import { rankFeed } from "@/lib/feed-rank";
+import { getFeedPage } from "@/lib/feed";
+import { ensureCountersBackfilled, bumpUserCounter } from "@/lib/counters";
+import { isCloudinaryUrl } from "@/lib/cloudinary";
+import { after } from "next/server";
 
+// GET /api/posts?limit&offset -> { posts, hasMore }
+// One ranked feed (Facebook-style pipeline in lib/feed-rank.ts): recency
+// is a signal, not a separate tab. Short private cache: browsers serve
+// the 10s poll + StrictMode double-fetch from cache while mutations
+// revalidate explicitly.
 export async function GET(req: Request) {
-  const db = await readDB();
   const session = await getSession();
-  const byId = new Map(db.users.map((u) => [u.id, u]));
-  // Same single-pass aggregation as src/app/page.tsx — keep them in sync.
-  const likeCount = new Map<string, number>();
-  const likedIds = new Set<string>();
-  for (const l of db.likes) {
-    likeCount.set(l.postId, (likeCount.get(l.postId) ?? 0) + 1);
-    if (session && l.userId === session.sub) likedIds.add(l.postId);
-  }
-  const commentCount = new Map<string, number>();
-  for (const c of db.comments)
-    if (!c.deleted) commentCount.set(c.postId, (commentCount.get(c.postId) ?? 0) + 1);
-  const enriched = [...db.posts]
-    .filter((p) => !p.deleted)
-    .map((p) => {
-      const author = byId.get(p.authorId);
-      return {
-        ...p,
-        author: author ? userPublic(author) : null,
-        likes: likeCount.get(p.id) ?? 0,
-        comments: commentCount.get(p.id) ?? 0,
-        liked: session ? likedIds.has(p.id) : false,
-      };
-    });
-  const sort = new URL(req.url).searchParams.get("sort");
-  const ordered =
-    sort === "new"
-      ? enriched.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-      : rankFeed(
-          enriched,
-          session?.sub ?? null,
-          session
-            ? db.follows
-                .filter((f) => f.followerId === session.sub)
-                .map((f) => f.followingId)
-            : []
-        );
-  return NextResponse.json(
-    { posts: ordered.slice(0, 50) },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(Math.max(Number(q.get("limit")) || 20, 1), 50);
+  const offset = Math.max(Number(q.get("offset")) || 0, 0);
+  // Self-healing counters for pre-denormalization rows — runs after the
+  // response so it never slows the feed.
+  after(() => ensureCountersBackfilled());
+  const page = await getFeedPage({
+    meId: session?.sub ?? null,
+    limit,
+    offset,
+  });
+  return NextResponse.json(page, {
+    headers: {
+      "Cache-Control": "private, max-age=5, stale-while-revalidate=15",
+    },
+  });
 }
 
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { body, image } = (await req.json().catch(() => ({}))) as {
+  const { body, image, thumb, video, cloudIds } = (await req.json().catch(
+    () => ({})
+  )) as {
     body?: string;
     image?: string;
+    thumb?: string;
+    cloudIds?: string[];
+    video?: {
+      url?: string;
+      thumb?: string | null;
+      w?: number | null;
+      h?: number | null;
+      duration?: number | null;
+      bytes?: number | null;
+    } | null;
   };
   const text = clean(body, 500);
-  if (!text) return NextResponse.json({ error: "empty" }, { status: 400 });
+  // Text, image, or video required (media-only posts allowed).
+  // Media URLs must be our own Cloudinary deliveries (no hotlinking).
+  const cleanUrl = (u: unknown): string | null =>
+    typeof u === "string" && isCloudinaryUrl(u) && u.length <= 2000
+      ? u
+      : null;
+  const cleanImage = cleanUrl(image);
+  const cleanThumb = cleanUrl(thumb);
+  let cleanVideo: {
+    url: string;
+    thumb: string | null;
+    w: number | null;
+    h: number | null;
+    duration: number | null;
+    bytes: number | null;
+  } | null = null;
+  if (video && typeof video === "object") {
+    const url = cleanUrl(video.url);
+    if (!url) return NextResponse.json({ error: "invalid" }, { status: 400 });
+    const num = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
+    const duration = num(video.duration);
+    const bytes = num(video.bytes);
+    if (
+      (duration !== null && (duration < 0 || duration > 65)) ||
+      (bytes !== null && (bytes < 0 || bytes > 60 * 1024 * 1024))
+    )
+      return NextResponse.json({ error: "invalid" }, { status: 400 });
+    cleanVideo = {
+      url,
+      thumb: video.thumb ? cleanUrl(video.thumb) : null,
+      w: num(video.w),
+      h: num(video.h),
+      duration,
+      bytes,
+    };
+  }
+  if (!text && !cleanImage && !cleanVideo)
+    return NextResponse.json({ error: "empty" }, { status: 400 });
+  // public_ids must live under the caller's prefix (destroy rights).
+  const cleanIds =
+    Array.isArray(cloudIds)
+      ? cloudIds.filter(
+          (id): id is string =>
+            typeof id === "string" &&
+            id.startsWith(`42social/${session.sub}/`)
+        ).slice(0, 4)
+      : [];
 
   // Max 5 posts / 5 min, no repeat text / 5 min.
   const vol = rateLimit(`post-vol:${session.sub}`, 5, 300_000);
@@ -68,21 +111,36 @@ export async function POST(req: Request) {
       { error: "limit", retryAfter: vol.retryAfter },
       { status: 429, headers: { "Retry-After": String(vol.retryAfter) } }
     );
-  if (isDuplicate(`post-dupe:${session.sub}`, text, 300_000))
+  if (text && isDuplicate(`post-dupe:${session.sub}`, text, 300_000))
     return NextResponse.json({ error: "duplicate" }, { status: 429 });
 
-  const post = await updateDB((db) => {
-    const p = {
-      id: uid("p"),
-      authorId: session.sub,
-      body: text,
-      image: image ? String(image).slice(0, 2000) : null,
-      edited: false,
-      deleted: false,
-      createdAt: new Date().toISOString(),
-    };
-    db.posts.push(p);
-    return p;
+  const me = await readUserById(session.sub);
+  const post = await pushToCollection("posts", {
+    id: uid("p"),
+    authorId: session.sub,
+    body: text,
+    image: cleanImage,
+    thumb: cleanThumb,
+    video: cleanVideo,
+    cloudIds: cleanIds.length > 0 ? cleanIds : null,
+    edited: false,
+    deleted: false,
+    createdAt: new Date().toISOString(),
+    author: me
+      ? {
+          id: me.id,
+          name: me.name,
+          login42: me.login42 ?? null,
+          avatar: me.avatar ?? null,
+          campus: me.campus ?? null,
+          isSupport: isSupportUser(me),
+        }
+      : null,
+    likesCount: 0,
+    commentsCount: 0,
   });
+  // Author post counter (exact recompute would scan /posts; a +1 leaf bump
+  // is exact here since we just added exactly one).
+  await bumpUserCounter(session.sub, "postsCount", 1).catch(() => null);
   return NextResponse.json({ post }, { status: 201 });
 }
