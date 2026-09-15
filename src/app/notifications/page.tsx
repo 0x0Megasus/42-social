@@ -34,7 +34,7 @@ export default async function Notifications() {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <h1 className="text-lg font-bold tracking-tight">Notifications</h1>
-        {items.some((n) => !n.read) && <ClearButton />}
+        {items.length > 0 && <ClearButton />}
       </div>
       {items.length === 0 && (
         <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-[14px] text-zinc-500 dark:border-zinc-700">

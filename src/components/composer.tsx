@@ -79,7 +79,7 @@ export function Composer({
         id="composer"
         value={body}
         onChange={(e) => setBody(takeGraphemes(e.target.value, 500))}
-        placeholder="Share a win, a project, a question…"
+        placeholder="you.have_tought ? share() : return;"
         rows={3}
         maxLength={1000}
         className="w-full resize-none rounded-[2px] border border-zinc-300 bg-zinc-50 p-3 text-[15px] leading-6 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:bg-black dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-600"

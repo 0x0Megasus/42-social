@@ -31,3 +31,21 @@ export async function POST() {
   });
   return NextResponse.json({ ok: true });
 }
+
+// DELETE /api/notifications            -> remove ALL my notifications
+// DELETE /api/notifications?id=<id>    -> remove one
+// Actually deletes the records from RTDB (not a tombstone) to reclaim space.
+export async function DELETE(req: Request) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const id = new URL(req.url).searchParams.get("id") ?? null;
+  const removed = await updateDB((d) => {
+    const before = d.notifications.length;
+    d.notifications = d.notifications.filter(
+      (n) => n.userId !== session.sub || (id !== null && n.id !== id)
+    );
+    return before - d.notifications.length;
+  });
+  return NextResponse.json({ removed });
+}

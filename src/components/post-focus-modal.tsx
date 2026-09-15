@@ -64,7 +64,7 @@ export function PostFocusModal({
       aria-label="Post and comments"
       className="fixed inset-0 z-50 overflow-y-auto"
     >
-      <div aria-hidden onClick={onClose} className="fixed inset-0 bg-black/60" />
+      <div aria-hidden onClick={onClose} className="fixed inset-0 bg-black/60 backdrop-blur-md" />
       <div className="relative mx-auto w-[min(42rem,calc(100vw-2rem))] py-10">
         <div className="mb-2 flex justify-end">
           <button

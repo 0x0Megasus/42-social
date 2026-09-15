@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { X } from "lucide-react";
 import { Avatar } from "@/components/post-card";
 import { timeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,7 @@ const LABEL: Record<string, string> = {
 
 export function NotificationItem({ n }: { n: NotifItem }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
   const handle = n.from?.login42 ?? n.from?.name ?? null;
   // Container goes to the post (or the follower's profile for follows).
   const target = n.postId
@@ -36,6 +39,21 @@ export function NotificationItem({ n }: { n: NotifItem }) {
     : handle
       ? `/profile/${encodeURIComponent(handle)}`
       : null;
+
+  async function remove(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/notifications?id=${encodeURIComponent(n.id)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setBusy(false);
+    }
+  }
 
   return (
     <div
@@ -50,11 +68,12 @@ export function NotificationItem({ n }: { n: NotifItem }) {
         }
       }}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border p-3",
+        "flex items-center gap-3 rounded-2xl border p-3 transition-opacity",
         n.read
           ? "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
           : "border-cyan-200 bg-cyan-50/60 dark:border-cyan-900 dark:bg-cyan-950/20",
-        target && "cursor-pointer transition-colors hover:border-zinc-300 dark:hover:border-zinc-700"
+        target && "cursor-pointer transition-colors hover:border-zinc-300 dark:hover:border-zinc-700",
+        busy && "pointer-events-none opacity-40"
       )}
     >
       <Avatar
@@ -82,6 +101,15 @@ export function NotificationItem({ n }: { n: NotifItem }) {
       {!n.read && (
         <span className="h-2 w-2 shrink-0 rounded-full bg-cyan-500" />
       )}
+      <button
+        onClick={remove}
+        disabled={busy}
+        aria-label="Delete notification"
+        title="Delete"
+        className="shrink-0 rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-rose-500 dark:hover:bg-zinc-800"
+      >
+        <X size={15} />
+      </button>
     </div>
   );
 }

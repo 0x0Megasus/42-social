@@ -15,6 +15,64 @@ const GLYPHS: Record<string, Record<string, string>> = {
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
+// Real-wood palette (chess.com walnut/maple): warm, photographic, tactile.
+// Frame uses layered gradients to read as varnished timber, not flat color.
+const LIGHT = "bg-[#f0d9b5]";
+const DARK = "bg-[#b58863]";
+const SELECT_RING = "ring-[#ffd54a]";
+const HINT_DOT = "bg-[#3d5a28]/50";
+const CAPTURE_RING = "ring-[#2f4a1f]/80";
+const LASTMOVE = "bg-[#f5e65c]/70";
+
+function fmtClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function ClockChip({
+  side,
+  liveClock,
+  active,
+}: {
+  side: "w" | "b";
+  liveClock: { w: number; b: number } | null;
+  active: boolean;
+}) {
+  // Always rendered (placeholder when the clock isn't seeded yet) so the
+  // player bars keep a stable height — mounting/unmounting the chip
+  // resizes the bars and makes the whole board jump.
+  if (!liveClock) {
+    return (
+      <span
+        aria-hidden
+        className="rounded-lg bg-black/40 px-2.5 py-1 font-mono text-[15px] font-bold tabular-nums text-stone-600 shadow-sm ring-1 ring-inset ring-white/10"
+      >
+        {side === "w" ? "♔ " : "♚ "}
+        –:––
+      </span>
+    );
+  }
+  const ms = side === "w" ? liveClock.w : liveClock.b;
+  const low = ms < 30_000;
+  return (
+    <span
+      className={cn(
+        "rounded-lg px-2.5 py-1 font-mono text-[15px] font-bold tabular-nums shadow-sm ring-1 ring-inset transition-colors",
+        active
+          ? low
+            ? "animate-pulse bg-[#b91c1c] text-white ring-red-400/50"
+            : "bg-[#1c1917] text-[#ffd54a] ring-amber-200/20"
+          : "bg-black/40 text-stone-300 ring-white/10"
+      )}
+    >
+      {side === "w" ? "♔ " : "♚ "}
+      {fmtClock(ms)}
+    </span>
+  );
+}
+
 function capturedBy(fen: string, by: "w" | "b"): string[] {
   // pieces OF the opponent captured BY `by`
   const start: Record<string, number> = { p: 8, n: 2, b: 2, r: 2, q: 1 };
@@ -41,11 +99,15 @@ export function ChessBoardView({
   myColor,
   interactive,
   onMove,
+  clock,
+  onFlag,
 }: {
   board: ChessBoard;
   myColor: "w" | "b" | null;
   interactive: boolean;
   onMove: (from: string, to: string, promotion?: string) => void;
+  clock?: { w: number; b: number; msAt: number } | null;
+  onFlag?: () => void;
 }) {
   const game = useMemo(() => {
     try {
@@ -59,7 +121,33 @@ export function ChessBoardView({
   const [selected, setSelected] = useState<string | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
   const prevFen = useRef(board.fen);
-  const histRef = useRef<HTMLDivElement>(null);
+
+  // Live clock: derive from the last server tick and re-render on an interval.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!clock || board.history.length === 0) return;
+    const t = setInterval(() => setNowTick(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [clock, board.history.length]);
+
+  const liveClock = useMemo(() => {
+    if (!clock) return null;
+    const whiteToMove = game.turn() === "w";
+    const elapsed = Math.max(0, nowTick - clock.msAt);
+    const w = Math.max(0, clock.w - (whiteToMove ? elapsed : 0));
+    const b = Math.max(0, clock.b - (whiteToMove ? 0 : elapsed));
+    return { w, b };
+  }, [clock, game, nowTick]);
+
+  // Flag fall: call onFlag once when my (or anyone's) clock visually hits 0.
+  const flaggedRef = useRef(false);
+  useEffect(() => {
+    if (!liveClock || !onFlag || flaggedRef.current) return;
+    if (liveClock.w <= 0 || liveClock.b <= 0) {
+      flaggedRef.current = true;
+      onFlag();
+    }
+  }, [liveClock, onFlag]);
 
   useEffect(() => {
     setSelected(null);
@@ -89,10 +177,6 @@ export function ChessBoardView({
     }
     prevFen.current = board.fen;
   }, [board.fen]);
-
-  useEffect(() => {
-    histRef.current?.scrollTo({ top: histRef.current.scrollHeight });
-  }, [board.history.length]);
 
   const legal = useMemo(() => {
     if (!selected) return new Map<string, { capture: boolean; promo: boolean }>();
@@ -136,7 +220,6 @@ export function ChessBoardView({
 
   function clickSquare(sq: string) {
     if (!myColor) return;
-    // piece of mine -> select
     const piece = (() => {
       try {
         return game.get(sq as Square);
@@ -145,7 +228,6 @@ export function ChessBoardView({
       }
     })();
     if (selected && legal.has(sq)) {
-      // a dot was tapped — a move attempt must never die silently
       if (!interactive) {
         toast.info("Wait for your turn.");
         return;
@@ -187,35 +269,55 @@ export function ChessBoardView({
     return score("w") - score("b");
   }, [board.fen]);
 
-  const pairs: [string, string | null][] = [];
-  for (let i = 0; i < board.history.length; i += 2) {
-    pairs.push([board.history[i], board.history[i + 1] ?? null]);
-  }
+  const turn = (() => {
+    try {
+      return game.turn();
+    } catch {
+      return null;
+    }
+  })();
+
+  const oppSide = myColor === "b" ? "w" : "b";
+  const mySide = myColor === "b" ? "b" : "w";
 
   return (
     <div className="space-y-2">
-      {/* opponent tray */}
-      <div className="flex h-6 items-center gap-1 px-1 text-lg leading-none">
-        {capturedBy(board.fen, myColor === "b" ? "b" : "w").map((t, i) => (
-          <span key={i} className="-ml-2 text-zinc-400 first:ml-0 dark:text-zinc-500">
-            {GLYPHS[myColor === "b" ? "b" : "w"][t]}
-          </span>
-        ))}
-        {myColor && diff !== 0 && (myColor === "w" ? diff > 0 : diff < 0) && (
-          <span className="ml-1 text-xs font-bold text-zinc-500">+{Math.abs(diff)}</span>
-        )}
+      {/* opponent: clock + captured tray + material */}
+      <div className="flex items-center gap-2 rounded-xl bg-black/50 px-2.5 py-1.5 ring-1 ring-white/10 backdrop-blur">
+        <ClockChip
+          side={oppSide}
+          liveClock={liveClock}
+          active={turn === oppSide && board.history.length > 0}
+        />
+        <div className="flex h-6 min-w-0 flex-1 items-center gap-1 text-lg leading-none">
+          {capturedBy(board.fen, myColor === "b" ? "b" : "w").map((t, i) => (
+            <span
+              key={i}
+              className="-ml-2 text-stone-300 first:ml-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
+            >
+              {GLYPHS[myColor === "b" ? "b" : "w"][t]}
+            </span>
+          ))}
+          {myColor && diff !== 0 && (myColor === "w" ? diff > 0 : diff < 0) && (
+            <span className="ml-1 text-xs font-bold text-amber-300/90">
+              +{Math.abs(diff)}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="relative">
+      {/* timber frame + board */}
+      <div className="rounded-2xl bg-gradient-to-br from-[#6b4f35] via-[#4a3525] to-[#2b1f14] p-2 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-2px_6px_rgba(0,0,0,0.5)] ring-1 ring-black/60 sm:p-2.5">
+      <div className="relative overflow-hidden rounded-lg shadow-[inset_0_2px_12px_rgba(0,0,0,0.45)] ring-1 ring-black/70">
         <div
           role="grid"
           aria-label="Chess board"
-          className="grid grid-cols-8 overflow-hidden rounded-2xl border border-zinc-300 shadow-lg dark:border-zinc-700"
+          className="grid grid-cols-8 select-none"
         >
           {ranks.map((r) =>
             files.map((f) => {
               const sq = `${f}${r}`;
-              const dark = (FILES.indexOf(f) + r) % 2 === 0;
+              const isDark = (FILES.indexOf(f) + r) % 2 === 0;
               let piece: { type: string; color: string } | null = null;
               try {
                 const got = game.get(sq as Square);
@@ -228,6 +330,8 @@ export function ChessBoardView({
               const isLast =
                 lastMove && (lastMove.from === sq || lastMove.to === sq);
               const isCheck = kingInCheck === sq;
+              const canSelect =
+                interactive && !!myColor && piece?.color === myColor;
               return (
                 <button
                   key={sq}
@@ -235,55 +339,95 @@ export function ChessBoardView({
                   aria-label={`${sq}${piece ? `, ${piece.color} ${piece.type}` : ""}`}
                   onClick={() => clickSquare(sq)}
                   className={cn(
-                    "relative flex aspect-square items-center justify-center transition-colors",
-                    dark ? "bg-zinc-400 dark:bg-zinc-600" : "bg-zinc-100 dark:bg-zinc-800",
-                    isLast && "bg-cyan-200/70 dark:bg-cyan-700/50",
-                    isSel && "ring-4 ring-inset ring-cyan-400"
+                    "relative flex aspect-square touch-manipulation items-center justify-center transition-[filter,box-shadow] duration-100",
+                    isDark ? DARK : LIGHT,
+                    canSelect && !isSel && "cursor-pointer hover:brightness-[1.07]",
+                    target && "cursor-pointer",
+                    isSel && `z-10 ring-4 ring-inset ${SELECT_RING}`
                   )}
                 >
+                  {/* wood sheen per square */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/14 via-transparent to-black/12"
+                  />
+                  {isLast && (
+                    <span
+                      aria-hidden
+                      className={cn("pointer-events-none absolute inset-0", LASTMOVE)}
+                    />
+                  )}
                   {f === files[0] && (
-                    <span className="absolute left-0.5 top-0.5 text-[9px] font-bold text-zinc-500/80 dark:text-zinc-400/80">
+                    <span
+                      className={cn(
+                        "absolute left-1 top-0.5 z-10 text-[10px] font-extrabold tracking-tight",
+                        isDark ? "text-[#f0d9b5]" : "text-[#b58863]"
+                      )}
+                    >
                       {r}
                     </span>
                   )}
                   {r === ranks[ranks.length - 1] && (
-                    <span className="absolute bottom-0.5 right-1 text-[9px] font-bold text-zinc-500/80 dark:text-zinc-400/80">
+                    <span
+                      className={cn(
+                        "absolute bottom-0.5 right-1 z-10 text-[10px] font-extrabold tracking-tight",
+                        isDark ? "text-[#f0d9b5]" : "text-[#b58863]"
+                      )}
+                    >
                       {f}
                     </span>
                   )}
                   {isCheck && (
-                    <span className="absolute inset-0 bg-[radial-gradient(circle,rgba(244,63,94,0.75)_20%,transparent_70%)]" />
+                    <span className="absolute inset-0 animate-pulse bg-[radial-gradient(circle,rgba(220,38,38,0.9)_22%,rgba(220,38,38,0.35)_55%,transparent_75%)]" />
                   )}
                   {piece && (
                     <span
                       className={cn(
-                        "text-[26px] leading-none sm:text-3xl",
+                        "relative z-[5] leading-none transition-transform duration-100",
+                        "text-[30px] sm:text-[38px]",
+                        isSel && "scale-110",
+                        canSelect && "hover:scale-[1.06]",
                         piece.color === "w"
-                          ? "text-zinc-50 [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_0_1px_rgba(0,0,0,0.9)]"
-                          : "text-zinc-950 dark:text-black [text-shadow:0_1px_1px_rgba(255,255,255,0.25)]"
+                          ? "text-[#fafafa] [-webkit-text-stroke:1.5px_rgba(30,20,10,0.85)] [text-shadow:0_1px_0_rgba(0,0,0,0.9),0_3px_4px_rgba(0,0,0,0.55),0_6px_10px_rgba(0,0,0,0.4)] drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]"
+                          : "text-[#141210] [-webkit-text-stroke:1px_rgba(240,217,181,0.35)] [text-shadow:0_1px_1px_rgba(255,235,200,0.45),0_3px_5px_rgba(0,0,0,0.8),0_6px_10px_rgba(0,0,0,0.5)] drop-shadow-[0_4px_4px_rgba(0,0,0,0.6)]"
                       )}
                     >
                       {GLYPHS[piece.color][piece.type]}
                     </span>
                   )}
                   {target && !piece && (
-                    <span className="h-1/4 w-1/4 rounded-full bg-zinc-500/40" />
+                    <span
+                      className={cn(
+                        "absolute z-[6] h-[26%] w-[26%] rounded-full shadow-[inset_0_1px_3px_rgba(0,0,0,0.5),0_1px_0_rgba(255,255,255,0.25)] ring-1 ring-black/20",
+                        HINT_DOT
+                      )}
+                    />
                   )}
                   {target && piece && (
-                    <span className="absolute inset-0 rounded-none ring-4 ring-inset ring-zinc-500/50" />
+                    <span
+                      className={cn(
+                        "absolute inset-[3px] z-[6] rounded-sm ring-[3px] ring-inset",
+                        CAPTURE_RING
+                      )}
+                    />
                   )}
                 </button>
               );
             })
           )}
         </div>
+        {/* vignette: felt depth over the whole board */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 shadow-[inset_0_0_40px_rgba(0,0,0,0.35)]"
+        />
 
         {promo && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/60">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-[2px]">
             <div
               role="dialog"
               aria-label="Choose promotion piece"
-              className="flex gap-2 rounded-2xl bg-white p-3 dark:bg-zinc-900"
+              className="flex gap-2 rounded-2xl border border-amber-100/20 bg-[#1c1917] p-3 shadow-2xl"
             >
               {(["q", "r", "b", "n"] as const).map((p) => (
                 <button
@@ -294,51 +438,55 @@ export function ChessBoardView({
                     setSelected(null);
                   }}
                   aria-label={`Promote to ${p}`}
-                  className="flex h-14 w-14 items-center justify-center rounded-xl text-4xl transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="flex h-16 w-16 items-center justify-center rounded-xl text-5xl transition-all hover:scale-105 hover:bg-white/10"
                 >
-                  {GLYPHS[myColor ?? "w"][p]}
+                  <span
+                    className={
+                      (myColor ?? "w") === "w"
+                        ? "text-[#fafafa] [-webkit-text-stroke:1.5px_rgba(30,20,10,0.85)] [text-shadow:0_2px_4px_rgba(0,0,0,0.6)]"
+                        : "text-[#141210] [-webkit-text-stroke:1px_rgba(240,217,181,0.35)] [text-shadow:0_2px_4px_rgba(0,0,0,0.7)]"
+                    }
+                  >
+                    {GLYPHS[myColor ?? "w"][p]}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         )}
       </div>
+      </div>
 
-      {/* my tray + controls */}
-      <div className="flex h-6 items-center gap-1 px-1 text-lg leading-none">
-        {capturedBy(board.fen, myColor === "b" ? "w" : "b").map((t, i) => (
-          <span key={i} className="-ml-2 text-zinc-400 first:ml-0 dark:text-zinc-500">
-            {GLYPHS[myColor === "b" ? "w" : "b"][t]}
-          </span>
-        ))}
-        {myColor && diff !== 0 && (myColor === "b" ? diff > 0 : diff < 0) && (
-          <span className="ml-1 text-xs font-bold text-zinc-500">+{Math.abs(diff)}</span>
-        )}
+      {/* me: clock + captured tray + material + flip */}
+      <div className="flex items-center gap-2 rounded-xl bg-black/50 px-2.5 py-1.5 ring-1 ring-white/10 backdrop-blur">
+        <ClockChip
+          side={mySide}
+          liveClock={liveClock}
+          active={turn === mySide && board.history.length > 0}
+        />
+        <div className="flex h-6 min-w-0 flex-1 items-center gap-1 text-lg leading-none">
+          {capturedBy(board.fen, myColor === "b" ? "w" : "b").map((t, i) => (
+            <span
+              key={i}
+              className="-ml-2 text-stone-300 first:ml-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
+            >
+              {GLYPHS[myColor === "b" ? "w" : "b"][t]}
+            </span>
+          ))}
+          {myColor && diff !== 0 && (myColor === "b" ? diff > 0 : diff < 0) && (
+            <span className="ml-1 text-xs font-bold text-amber-300/90">
+              +{Math.abs(diff)}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => setFlipped((f) => !f)}
           aria-label="Flip board"
-          className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-white/10 hover:text-stone-200"
         >
           <ArrowUpDown size={14} />
         </button>
       </div>
-
-      {/* move history */}
-      {pairs.length > 0 && (
-        <div
-          ref={histRef}
-          aria-label="Move history"
-          className="max-h-28 space-y-0.5 overflow-y-auto rounded-xl bg-zinc-50 p-2 dark:bg-zinc-900/60"
-        >
-          {pairs.map(([w, b], i) => (
-            <div key={i} className="grid grid-cols-[2rem_1fr_1fr] text-[13px]">
-              <span className="text-zinc-400">{i + 1}.</span>
-              <span className="font-mono font-semibold">{w}</span>
-              <span className="font-mono text-zinc-500">{b ?? ""}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

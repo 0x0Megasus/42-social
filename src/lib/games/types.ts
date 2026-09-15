@@ -4,8 +4,26 @@ export type GameKind =
   | "rps"
   | "number"
   | "twentyone"
-  | "chess";
+  | "chess"
+  | "backrooms";
 export type GameStatus = "waiting" | "playing" | "over";
+
+// Match shape for realtime solo/duel games (backrooms): each seat plays
+// its own run and submits once. No turns — submitResult() settles it.
+export type BackroomsMode = "solo" | "duel";
+
+export type RunResult = {
+  score: number;
+  kills: number;
+  wave: number;
+  time: number; // seconds survived / clear time
+  won: boolean; // true = escaped
+};
+
+/** Backrooms board payload (mirrors room.seed for the client). */
+export type BackroomsBoard = {
+  seed: number;
+};
 
 export type GameRoom = {
   id: string;
@@ -21,11 +39,15 @@ export type GameRoom = {
   winLine: unknown; // engine-provided winning cells, if any
   round: number;
   rematch: Record<string, boolean>;
+  // backrooms only (absent for turn-based kinds)
+  mode?: BackroomsMode; // solo = instant start, duel = host + guest
+  seed?: number | null; // shared maze seed for the round
+  scores?: Record<string, RunResult>; // one entry per submitted seat
   createdAt: string;
   updatedAt: string;
 };
 
-export type GameRecord = { w: number; l: number; d: number };
+export type GameRecord = { w: number; l: number; d: number; best?: number };
 
 export type GameView = GameRoom & {
   // per-viewer extras computed server-side (never trust the client)
@@ -54,4 +76,5 @@ export const GAME_LABEL: Record<GameKind, string> = {
   number: "Number Duel",
   twentyone: "21 Duel",
   chess: "Chess",
+  backrooms: "Backrooms: No-Clip",
 };

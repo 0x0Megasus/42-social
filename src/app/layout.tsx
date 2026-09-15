@@ -68,7 +68,18 @@ export default function RootLayout({
             {children}
           </main>
           <Footer />
-          <Toaster position="bottom-center" richColors closeButton />
+          <Toaster
+            position="bottom-center"
+            theme="dark"
+            closeButton
+            toastOptions={{
+              style: {
+                background: "#09090B",
+                color: "#FAFAFA",
+                border: "1px solid #27272A",
+              },
+            }}
+          />
         </ThemeProvider>
       </body>
     </html>

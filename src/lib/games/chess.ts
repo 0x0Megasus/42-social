@@ -1,7 +1,14 @@
 // Chess board state: FEN string (RTDB-safe, no nulls) + SAN history.
+// Clock: server-computed ms remaining after every move (w/b), msAt = the
+// server Date.now() the clock was computed at, for client-side display.
 export type ChessBoard = {
   fen: string;
   history: string[];
+  clock?: {
+    w: number; // ms remaining, white
+    b: number; // ms remaining, black
+    msAt: number; // server epoch ms the values were computed at
+  } | null;
 };
 
 export const CHESS_STARTPOS =
@@ -9,6 +16,37 @@ export const CHESS_STARTPOS =
 
 export function freshChess(): ChessBoard {
   return { fen: CHESS_STARTPOS, history: [] };
+}
+
+export const CHESS_CLOCK_START_MS = 10 * 60 * 1000; // 10 minutes per side
+
+/**
+ * Advance the clock to `now` and charge the mover. Pure: takes/returns data.
+ * - First call initializes both clocks and starts charging White.
+ * - The side to move is charged for the time since `msAt`.
+ * - Returns the new clock (not yet applied to the board).
+ */
+export function tickChessClock(
+  clock: ChessBoard["clock"],
+  now: number,
+  turnIsWhite: boolean
+): NonNullable<ChessBoard["clock"]> {
+  const start = CHESS_CLOCK_START_MS;
+  if (!clock) {
+    return {
+      w: start,
+      b: start,
+      msAt: now,
+    };
+  }
+  const elapsed = Math.max(0, now - clock.msAt);
+  const w = Math.max(0, clock.w - (turnIsWhite ? elapsed : 0));
+  const b = Math.max(0, clock.b - (turnIsWhite ? 0 : elapsed));
+  return {
+    w,
+    b,
+    msAt: now,
+  };
 }
 
 export function isSquare(v: unknown): v is string {

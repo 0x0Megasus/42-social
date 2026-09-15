@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Plus, LogIn, Swords, LoaderCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, LogIn, Swords, LoaderCircle, Bot, User, Users } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiTimeoutError } from "@/lib/api";
 import { Avatar } from "@/components/post-card";
@@ -10,6 +10,7 @@ import { timeAgo } from "@/lib/format";
 import { GAME_LABEL, type GameKind, type GameView } from "@/lib/games/types";
 
 const GAMES: { kind: GameKind; blurb: string; emoji: string }[] = [
+  { kind: "backrooms", blurb: "FPS horror. 6 waves, one exit. Solo or duel.", emoji: "🧟" },
   { kind: "chess", blurb: "The royal game. Full rules.", emoji: "♟️" },
   { kind: "connectfour", blurb: "Drop discs, connect four.", emoji: "🔴" },
   { kind: "tictactoe", blurb: "Three in a row. Fast and ruthless.", emoji: "⭕" },
@@ -28,7 +29,14 @@ export function GamesLobby({
   const router = useRouter();
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState<GameKind | null>(null);
+  const [botting, setBotting] = useState<GameKind | null>(null);
   const [joining, setJoining] = useState(false);
+
+  // Back/forward nav can serve a cached page that predates a room the user
+  // just created — re-fetch the server payload on entry so it shows up.
+  useEffect(() => {
+    router.refresh();
+  }, [router]);
 
   async function create(kind: GameKind) {
     if (creating) return;
@@ -44,6 +52,44 @@ export function GamesLobby({
       router.push(`/games/${d.room.id}`);
     } catch (e) {
       toast.error(e instanceof ApiTimeoutError ? e.message : "Couldn't create room.");
+      setCreating(null);
+    }
+  }
+
+  async function createBot(kind: GameKind) {
+    if (botting) return;
+    setBotting(kind);
+    try {
+      const res = await api("/api/games", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, vsBot: true }),
+      });
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      router.push(`/games/${d.room.id}`);
+    } catch (e) {
+      toast.error(e instanceof ApiTimeoutError ? e.message : "Couldn't start bot game.");
+      setBotting(null);
+    }
+  }
+
+  // Backrooms: solo drops straight into a run; duel creates a room whose
+  // code you share (join box below also works for duels).
+  async function createBackrooms(mode: "solo" | "duel") {
+    if (creating) return;
+    setCreating("backrooms");
+    try {
+      const res = await api("/api/games", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "backrooms", mode }),
+      });
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      router.push(`/games/${d.room.id}`);
+    } catch (e) {
+      toast.error(e instanceof ApiTimeoutError ? e.message : "Couldn't start run.");
       setCreating(null);
     }
   }
@@ -89,22 +135,61 @@ export function GamesLobby({
             <p className="text-3xl">{g.emoji}</p>
             <h2 className="mt-2 text-[16px] font-bold">{GAME_LABEL[g.kind]}</h2>
             <p className="mt-0.5 text-[13px] text-zinc-500">{g.blurb}</p>
-            <button
-              onClick={() => create(g.kind)}
-              disabled={creating !== null}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
-            >
-              {creating === g.kind ? (
-                <>
+            {g.kind === "backrooms" ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => createBackrooms("solo")}
+                  disabled={creating !== null || botting !== null}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#27272A] bg-[#09090B] py-2.5 text-[14px] font-semibold text-[#F4F4F5] hover:bg-[#18181B] disabled:opacity-70"
+                >
+                  {creating === "backrooms" ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <User size={16} />
+                  )}
+                  Solo
+                </button>
+                <button
+                  onClick={() => createBackrooms("duel")}
+                  disabled={creating !== null || botting !== null}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
+                >
+                  {creating === "backrooms" ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <Users size={16} />
+                  )}
+                  Duel
+                </button>
+              </div>
+            ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => createBot(g.kind)}
+                disabled={creating !== null || botting !== null}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#27272A] bg-[#09090B] py-2.5 text-[14px] font-semibold text-[#F4F4F5] hover:bg-[#18181B] disabled:opacity-70"
+              >
+                {botting === g.kind ? (
                   <LoaderCircle size={16} className="animate-spin" />
-                  Creating room…
-                </>
-              ) : (
-                <>
-                  <Plus size={16} /> New room
-                </>
-              )}
-            </button>
+                ) : (
+                  <Bot size={16} />
+                )}
+                vs Bot
+              </button>
+              <button
+                onClick={() => create(g.kind)}
+                disabled={creating !== null || botting !== null}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#FAFAFA] py-2.5 text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] disabled:opacity-70"
+              >
+                {creating === g.kind ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <Plus size={16} />
+                )}
+                New room
+              </button>
+            </div>
+            )}
           </div>
         ))}
       </div>
@@ -165,7 +250,10 @@ export function GamesLobby({
                     {GAME_LABEL[r.kind]} · {r.id}
                   </p>
                   <p className="truncate text-xs text-zinc-500">
-                    vs {opp?.name ?? "waiting…"} ·{" "}
+                    {r.kind === "backrooms" && !opp?.name
+                      ? "solo run"
+                      : `vs ${opp?.name ?? "waiting…"}`}{" "}
+                    ·{" "}
                     {r.status === "over"
                       ? r.winnerId === meId
                         ? "you won"
@@ -174,9 +262,11 @@ export function GamesLobby({
                           : "draw"
                       : r.status === "waiting"
                         ? "waiting for opponent"
-                        : r.turn === meId
-                          ? "your turn"
-                          : "their turn"}
+                        : r.kind === "backrooms"
+                          ? "in the maze"
+                          : r.turn === meId
+                            ? "your turn"
+                            : "their turn"}
                   </p>
                 </div>
                 <span className="shrink-0 text-[11px] text-zinc-400">

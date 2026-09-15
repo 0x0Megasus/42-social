@@ -5,6 +5,7 @@ import { Avatar } from "@/components/post-card";
 import { PostList } from "@/components/post-list";
 import { FollowButton } from "@/components/auth-buttons";
 import { MessageButton } from "@/components/message-button";
+import { FollowCounts, type FollowUser } from "@/components/follow-counts";
 import { EditProfileForm } from "@/components/edit-profile";
 import { SoundSetting } from "@/components/sound-setting";
 import { LiveDot, PresenceText } from "@/components/presence";
@@ -13,7 +14,7 @@ import { isSupportUser } from "@/lib/support";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
 import { getRecords } from "@/lib/games-store";
 import { GAME_LABEL, type GameKind } from "@/lib/games/types";
-import { MapPin, Users, Trophy } from "lucide-react";
+import { MapPin, Trophy } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +47,16 @@ export default async function Profile({
         ? db.likes.some((l) => l.postId === p.id && l.userId === session.sub)
         : false,
     }));
-  const followers = db.follows.filter((f) => f.followingId === user.id).length;
-  const following = db.follows.filter((f) => f.followerId === user.id).length;
+  const followerList = db.follows
+    .filter((f) => f.followingId === user.id)
+    .map((f) => db.users.find((u) => u.id === f.followerId))
+    .filter((u): u is NonNullable<typeof u> => !!u)
+    .map((u): FollowUser => ({ id: u.id, name: u.name, handle: u.login42 ?? u.name, avatar: u.avatar ?? null }));
+  const followingList = db.follows
+    .filter((f) => f.followerId === user.id)
+    .map((f) => db.users.find((u) => u.id === f.followingId))
+    .filter((u): u is NonNullable<typeof u> => !!u)
+    .map((u): FollowUser => ({ id: u.id, name: u.name, handle: u.login42 ?? u.name, avatar: u.avatar ?? null }));
   const isFollowing = session
     ? db.follows.some(
         (f) => f.followerId === session.sub && f.followingId === user.id
@@ -56,7 +65,7 @@ export default async function Profile({
   const isMe = session?.sub === user.id;
   const peerOnline = isOnlineAt((await beatsFor([user.id])).get(user.id));
   const records = await getRecords(user.id);
-  const played = (Object.entries(records) as [string, { w: number; l: number; d: number }][])
+  const played = (Object.entries(records) as [string, { w: number; l: number; d: number; best?: number }][])
     .filter(([, r]) => r.w + r.l + r.d > 0);
 
   return (
@@ -94,9 +103,7 @@ export default async function Profile({
               <MapPin size={13} /> {pub.campus}
             </span>
           )}
-          <span className="flex items-center gap-1">
-            <Users size={13} /> {followers} followers · {following} following
-          </span>
+          <FollowCounts followers={followerList} following={followingList} />
         </div>
         {pub.bio && (
           <p className="mx-auto mt-3 max-w-sm break-words text-[14px] leading-6">{pub.bio}</p>
@@ -136,6 +143,9 @@ export default async function Profile({
                 </p>
                 <p className="text-xs tabular-nums text-zinc-500">
                   {r.w}W · {r.l}L · {r.d}D
+                  {typeof r.best === "number" && r.best > 0 && (
+                    <span className="text-amber-500"> · best {r.best}</span>
+                  )}
                 </p>
               </div>
             ))}
