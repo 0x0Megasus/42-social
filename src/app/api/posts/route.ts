@@ -38,13 +38,15 @@ export async function POST(req: Request) {
   const session = await getSession();
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const { body, image, thumb, video, cloudIds } = (await req.json().catch(
+  const { body, image, thumb, video, cloudIds, imgW, imgH } = (await req.json().catch(
     () => ({})
   )) as {
     body?: string;
     image?: string;
     thumb?: string;
     cloudIds?: string[];
+    imgW?: number;
+    imgH?: number;
     video?: {
       url?: string;
       thumb?: string | null;
@@ -94,6 +96,13 @@ export async function POST(req: Request) {
   }
   if (!text && !cleanImage && !cleanVideo)
     return NextResponse.json({ error: "empty" }, { status: 400 });
+  const dim = (v: unknown): number | null =>
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v > 0 &&
+    v <= 10000
+      ? Math.round(v)
+      : null;
   // public_ids must live under the caller's prefix (destroy rights).
   const cleanIds =
     Array.isArray(cloudIds)
@@ -121,6 +130,8 @@ export async function POST(req: Request) {
     body: text,
     image: cleanImage,
     thumb: cleanThumb,
+    imgW: dim(imgW),
+    imgH: dim(imgH),
     video: cleanVideo,
     cloudIds: cleanIds.length > 0 ? cleanIds : null,
     edited: false,

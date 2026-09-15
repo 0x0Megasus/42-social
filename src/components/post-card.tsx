@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2, Play } from "lucide-react";
+import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { FounderBadge } from "@/components/founder-badge";
@@ -11,6 +11,7 @@ import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
 import { Quote } from "@/components/quote";
 import { ChatSkeleton } from "@/components/skeletons";
 import { renderRich, stripMarkup } from "@/components/rich-text";
+import { VideoPlayer } from "@/components/video-player";
 import { clean, graphemeLen, takeGraphemes } from "@/lib/sanitize";
 import { StatusDot } from "@/components/presence";
 import { timeAgo } from "@/lib/format";
@@ -22,6 +23,8 @@ export type FeedPost = {
   body: string;
   image: string | null;
   thumb: string | null;
+  imgW?: number | null;
+  imgH?: number | null;
   cloudIds?: string[] | null;
   video: {
     url: string;
@@ -123,75 +126,88 @@ export type CommentAuthor = {
 };
 
 // Post attachments: images load a thumbnail first, then swap to full
-// quality the moment they scroll into view (viewport-aware loading:
-// full quality without the click, feed stays cheap). Videos stay
-// click-to-play so files only download on tap.
-export function PostMedia({ post }: { post: FeedPost }) {
+// quality the moment they scroll into view (viewport-aware loading).
+// Tap opens a fullscreen lightbox. Videos use the custom player and pause
+// themselves the moment the thread opens (inline or focus popup), so the
+// user plays them in the comments view instead.
+export function PostMedia({
+  post,
+  suspended,
+}: {
+  post: FeedPost;
+  suspended?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const [playing, setPlaying] = useState(false);
   const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [expanded]);
+
   if (post.video) {
-    const v = post.video;
-    if (playing) {
-      return (
-        <video
-          src={v.url}
-          controls
-          playsInline
-          preload="metadata"
-          className="mt-3 max-h-[70dvh] w-full rounded-xl bg-black"
-        />
-      );
-    }
     return (
-      <button
-        onClick={() => setPlaying(true)}
-        aria-label="Play video"
-        className="group relative mt-3 block w-full overflow-hidden rounded-xl bg-black"
-      >
-        {v.thumb ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={v.thumb}
-            alt="Video preview"
-            loading="lazy"
-            className="max-h-[50dvh] w-full object-cover"
-          />
-        ) : (
-          <span className="flex aspect-video w-full items-center justify-center text-zinc-500">
-            Video
-          </span>
-        )}
-        <span className="absolute inset-0 flex items-center justify-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover:scale-105">
-            <Play size={22} fill="currentColor" />
-          </span>
-        </span>
-        {typeof v.duration === "number" && (
-          <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white">
-            {Math.floor(v.duration / 60)}:{String(Math.floor(v.duration % 60)).padStart(2, "0")}
-          </span>
-        )}
-      </button>
+      <VideoPlayer
+        src={post.video.url}
+        poster={post.video.thumb}
+        suspended={suspended}
+      />
     );
   }
   if (post.image) {
     return (
-      <InView onChange={setInView}>
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          aria-label={expanded ? "Shrink image" : "Expand image"}
-          className="mt-3 block w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-900"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={inView || expanded ? post.image : (post.thumb ?? post.image)}
-            alt="Post image"
-            loading="lazy"
-            className={expanded ? "w-full" : "max-h-[70dvh] w-full object-cover"}
-          />
-        </button>
-      </InView>
+      <>
+        <InView onChange={setInView}>
+          <button
+            onClick={() => setExpanded(true)}
+            aria-label="View image fullscreen"
+            className="mt-3 block w-full overflow-hidden rounded-xl bg-black"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={inView ? post.image : (post.thumb ?? post.image)}
+              alt="Post image"
+              loading="lazy"
+              // Fit-inside (never crop, never stretch): the box caps at
+              // max-h-80 / full width and the media keeps its own ratio.
+              className="mx-auto block h-auto max-h-80 w-auto max-w-full"
+            />
+          </button>
+        </InView>
+        {expanded && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image preview"
+            onClick={() => setExpanded(false)}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+          >
+            <button
+              onClick={() => setExpanded(false)}
+              aria-label="Close preview"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            >
+              <X size={18} />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={post.image}
+              alt="Post image fullscreen"
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-[90dvh] max-w-full rounded-lg object-contain"
+            />
+          </div>
+        )}
+      </>
     );
   }
   return null;
@@ -769,7 +785,7 @@ export function PostCard({
       ) : (
         <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6 sm:text-base sm:leading-7">{renderRich(displayBody)}</p>
       )}
-      <PostMedia post={post} />
+      <PostMedia post={post} suspended={isOpen || open} />
       <div className="mt-3 flex items-center gap-1">
         <button
           onClick={toggleLike}

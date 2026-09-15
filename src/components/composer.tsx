@@ -22,6 +22,8 @@ type Attachment =
   | {
       kind: "image";
       blob: Blob;
+      w: number;
+      h: number;
       preview: string;
     }
   | {
@@ -77,6 +79,8 @@ export function Composer({
         setAttach({
           kind: "image",
           blob: c.blob,
+          w: c.width,
+          h: c.height,
           preview: URL.createObjectURL(c.blob),
         });
       } else if (file.type.startsWith("video/")) {
@@ -124,12 +128,16 @@ export function Composer({
       // upload, no extra storage.
       let image: string | null = null;
       let thumb: string | null = null;
+      let imgW: number | null = null;
+      let imgH: number | null = null;
       let video: FeedPost["video"] = null;
       const cloudIds: string[] = [];
       if (attach?.kind === "image") {
         const main = await uploadFile("posts", author.id, attach.blob, setProgress);
         image = main.url;
         thumb = thumbUrl(main.url) ?? null;
+        imgW = attach.w;
+        imgH = attach.h;
         cloudIds.push(main.publicId);
       } else if (attach?.kind === "video") {
         const main = await uploadFile("videos", author.id, attach.file, setProgress);
@@ -146,7 +154,7 @@ export function Composer({
       const res = await api("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: text, image, thumb, video, cloudIds }),
+        body: JSON.stringify({ body: text, image, thumb, imgW, imgH, video, cloudIds }),
       });
       if (res.status === 401) {
         router.push("/login");

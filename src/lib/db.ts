@@ -58,6 +58,9 @@ export type Post = {
   body: string;
   image: string | null;
   thumb: string | null;
+  /** natural image dimensions (for ratio-correct rendering) */
+  imgW?: number | null;
+  imgH?: number | null;
   video: PostVideo | null;
   /** Cloudinary public_ids of attached files (for destroy on delete) */
   cloudIds?: string[] | null;
@@ -580,6 +583,12 @@ export async function readPath<T>(path: string): Promise<T | null> {
   return (snap.val() ?? null) as T | null;
 }
 
+// RTDB keys forbid `.` `$` `#` `[` `]` `/` — emails are lowercased with
+// dots mapped to commas (Firebase convention) for pointer keys.
+export function encodeEmailKey(email: string): string {
+  return email.toLowerCase().replace(/\./g, ",");
+}
+
 // O(1) user lookup via the /users-by-id map (dual-written on signup +
 // profile edit). Falls back to a legacy array scan for pre-map accounts.
 export async function readUserById(id: string): Promise<User | null> {
@@ -709,6 +718,114 @@ export function cachedUserById(id: string): Promise<User | null> {
 
 export function bustUserCache(id: string): void {
   invalidatePrefix(`user:${id}`);
+}
+
+export type UserUpsert = {
+  email: string;
+  name: string;
+  login42: string | null;
+  googleId: string | null;
+  avatar: string | null;
+  campus: string | null;
+  coalition: string | null;
+};
+
+// Signup/login without a root transaction (the old updateDB-on-`/` read
+// the entire database and timed out as it grew). Flow:
+// 1. Email pointer (`/users-by-email/{key}`) → O(1) hit for logins.
+// 2. Miss → atomic leaf-claim of the pointer (race guard), then scoped
+//    appends. A lost race re-reads the winner — never duplicates.
+// Gap-fills only touch empty fields, never user-edited profile data.
+export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
+  const key = `/users-by-email/${encodeEmailKey(input.email)}`;
+  const pointed = await readPath<string>(key).catch(() => null);
+  if (typeof pointed === "string" && pointed) {
+    const existing = await readUserById(pointed);
+    if (existing) {
+      let dirty = false;
+      if (input.googleId && !existing.googleId) {
+        existing.googleId = input.googleId;
+        dirty = true;
+      }
+      if (!existing.name && input.name) {
+        existing.name = input.name;
+        dirty = true;
+      }
+      if (input.avatar && !existing.avatar) {
+        existing.avatar = input.avatar;
+        dirty = true;
+      }
+      if (!existing.login42 && input.login42) {
+        existing.login42 = input.login42;
+        dirty = true;
+      }
+      if (input.campus && !existing.campus) {
+        existing.campus = input.campus;
+        dirty = true;
+      }
+      if (input.coalition && !existing.coalition) {
+        existing.coalition = input.coalition;
+        dirty = true;
+      }
+      if (dirty) {
+        await writeUserById(existing.id, existing).catch(() => null);
+        const users = await readCollection("users").catch(() => []);
+        const idx = users.findIndex((u) => u.id === existing.id);
+        if (idx >= 0)
+          await setPath(`/users/${idx}`, existing).catch(() => null);
+        await indexUserHandles(existing).catch(() => null);
+      }
+      return existing;
+    }
+    // Pointer dangles — fall through and recreate.
+  }
+  const freshId = uid("u");
+  const tx = await transactLeaf(key, (cur) =>
+    typeof cur === "string" && cur ? undefined : freshId
+  );
+  if (!tx.committed) {
+    const winner = await readPath<string>(key).catch(() => null);
+    if (typeof winner === "string" && winner) {
+      const racer = await readUserById(winner);
+      if (racer) return racer;
+    }
+    throw new Error("signup race — retry the request");
+  }
+  // Claim won but the pointer is new: a legacy account may predate
+  // pointers — adopt it instead of forking a duplicate. (One scan per
+  // legacy user, once ever; the pointer makes all future logins O(1).)
+  const legacy = await readCollection("users").catch(() => []);
+  const match = legacy.find(
+    (u) => u.email.toLowerCase() === input.email.toLowerCase()
+  );
+  if (match) {
+    await setPath(key, match.id).catch(() => null);
+    return match;
+  }
+  const fresh: User = {
+    id: freshId,
+    email: input.email,
+    name: input.name,
+    login42: input.login42,
+    googleId: input.googleId,
+    avatar: input.avatar,
+    campus: input.campus,
+    coalition: input.coalition,
+    bio: "",
+    socials: [],
+    lastSeen: null,
+    createdAt: new Date().toISOString(),
+    nameLower: input.name.toLowerCase(),
+    postsCount: 0,
+    followersCount: 0,
+    followingCount: 0,
+  };
+  await pushToCollection("users", fresh);
+  await Promise.all([
+    writeUserById(fresh.id, fresh).catch(() => null),
+    indexUserHandles(fresh).catch(() => null),
+  ]);
+  return fresh;
 }
 
 export function uid(prefix = "id"): string {

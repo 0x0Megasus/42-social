@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { exchange42Code, fetch42Me } from "@/lib/forty-two";
-import { indexUserHandles, updateDB, uid, writeUserById } from "@/lib/db";
+import { upsertUserByEmail } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { clean } from "@/lib/sanitize";
@@ -29,49 +29,23 @@ export async function GET(req: Request) {
     const token = await exchange42Code(code);
     const me = await fetch42Me(token);
 
-    const user = await updateDB((db) => {
-      const existing = db.users.find(
-        (u) => u.email.toLowerCase() === String(me.email).toLowerCase()
-      );
-      const campus = me.campus?.[0]?.name ?? null;
-      const coalition = me.coalitions?.[0]?.name ?? null;
-      const fullName = clean(
-        me.usual_full_name || me.displayname || me.login,
-        60
-      );
-      const avatar = me.image?.link ?? null;
-      if (existing) {
-        existing.login42 = me.login;
-        existing.name = existing.name || fullName;
-        if (avatar && !existing.avatar) existing.avatar = avatar;
-        if (campus) existing.campus = campus;
-        if (coalition) existing.coalition = coalition;
-        return existing;
-      }
-      const fresh = {
-        id: uid("u"),
-        email: me.email,
-        name: fullName,
-        login42: me.login,
-        googleId: null,
-        avatar,
-        campus,
-        coalition,
-        bio: "",
-        socials: [],
-        lastSeen: null as string | null,
-        createdAt: new Date().toISOString(),
-      };
-      db.users.push(fresh);
-      return fresh;
+    const campus = me.campus?.[0]?.name ?? null;
+    const coalition = me.coalitions?.[0]?.name ?? null;
+    const fullName = clean(
+      me.usual_full_name || me.displayname || me.login,
+      60
+    );
+    const avatar = me.image?.link ?? null;
+    // Scoped email upsert (no root transaction — see google route).
+    const user = await upsertUserByEmail({
+      email: me.email,
+      name: fullName,
+      login42: me.login,
+      googleId: null,
+      avatar,
+      campus,
+      coalition,
     });
-
-    // O(1) lookup structures for future reads (best-effort; the backfill
-    // covers anything missed).
-    await Promise.all([
-      writeUserById(user.id, user).catch(() => null),
-      indexUserHandles(user).catch(() => null),
-    ]);
 
     await setSessionCookie(
       await createSession({ sub: user.id, email: user.email, name: user.name })

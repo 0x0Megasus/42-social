@@ -1,5 +1,6 @@
 import {
   chunkedUpdate,
+  encodeEmailKey,
   newPushKey,
   queryCollection,
   queryCollectionEntries,
@@ -131,6 +132,8 @@ async function backfill(): Promise<void> {
     mirror.push([`/users-by-handle/${u.name.toLowerCase()}`, u.id]);
     if (u.login42)
       mirror.push([`/users-by-handle/${u.login42.toLowerCase()}`, u.id]);
+    if (u.email)
+      mirror.push([`/users-by-email/${encodeEmailKey(u.email)}`, u.id]);
   }
   for (const p of posts) mirror.push([`/posts-by-id/${p.id}`, p]);
   await chunkedUpdate(mirror);

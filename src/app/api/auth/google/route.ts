@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRemoteJWKSet, jwtVerify, decodeJwt } from "jose";
-import { indexUserHandles, updateDB, uid, writeUserById } from "@/lib/db";
+import { upsertUserByEmail } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { clean } from "@/lib/sanitize";
@@ -61,40 +61,17 @@ export async function POST(req: Request) {
   // provider display names render site-wide — bound + normalize them
   name = clean(name, 60) || email;
 
-  const user = await updateDB((db) => {
-    const existing = db.users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase()
-    );
-    if (existing) {
-      existing.googleId = existing.googleId ?? googleId ?? null;
-      if (!existing.name) existing.name = name;
-      if (!existing.avatar && avatar) existing.avatar = avatar;
-      return existing;
-    }
-    const fresh = {
-      id: uid("u"),
-      email,
-      name,
-      login42: null,
-      googleId: googleId || null,
-      avatar,
-      campus: null,
-      coalition: null,
-      bio: "",
-      socials: [],
-      lastSeen: null as string | null,
-      createdAt: new Date().toISOString(),
-    };
-    db.users.push(fresh);
-    return fresh;
+  // Scoped email upsert (no root transaction — the old updateDB-on-`/`
+  // timed out as the database grew).
+  const user = await upsertUserByEmail({
+    email,
+    name,
+    login42: null,
+    googleId: googleId || null,
+    avatar,
+    campus: null,
+    coalition: null,
   });
-
-  // O(1) lookup structures for future reads (best-effort; the backfill
-  // covers anything missed).
-  await Promise.all([
-    writeUserById(user.id, user).catch(() => null),
-    indexUserHandles(user).catch(() => null),
-  ]);
 
   await setSessionCookie(
     await createSession({ sub: user.id, email: user.email, name: user.name })

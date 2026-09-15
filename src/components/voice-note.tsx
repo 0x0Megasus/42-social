@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Mic, Pause, Play, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -276,6 +276,10 @@ export function VoiceRecorder({
 }
 
 // Waveform player for received voice notes (custom UI over <audio>).
+// Only one voice note plays at a time app-wide: starting one broadcasts
+// a `voice-play` event carrying its id, and every other instance pauses.
+let voiceSeq = 0;
+
 export function VoicePlayer({
   url,
   duration,
@@ -286,16 +290,30 @@ export function VoicePlayer({
   peaks: number[] | null;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const idRef = useRef(`voice-${++voiceSeq}-${Math.random().toString(36).slice(2, 8)}`);
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState(0);
   const bars = peaks && peaks.length > 0 ? peaks : new Array(28).fill(0.4);
   const total = duration ?? undefined;
 
+  useEffect(() => {
+    const onOther = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== idRef.current) {
+        audioRef.current?.pause();
+      }
+    };
+    window.addEventListener("voice-play", onOther);
+    return () => window.removeEventListener("voice-play", onOther);
+  }, []);
+
   function toggle() {
     const el = audioRef.current;
     if (!el) return;
     if (playing) el.pause();
-    else void el.play().catch(() => null);
+    else {
+      window.dispatchEvent(new CustomEvent("voice-play", { detail: idRef.current }));
+      void el.play().catch(() => null);
+    }
   }
 
   return (
