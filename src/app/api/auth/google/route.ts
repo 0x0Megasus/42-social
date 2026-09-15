@@ -5,6 +5,8 @@ import { upsertUserByEmail } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { clean } from "@/lib/sanitize";
+import { isMaintenanceMode } from "@/lib/maintenance";
+import { isSupportUser } from "@/lib/support";
 
 const JWKS = createRemoteJWKSet(
   new URL(
@@ -72,6 +74,13 @@ export async function POST(req: Request) {
     campus: null,
     coalition: null,
   });
+
+  if (isMaintenanceMode() && !isSupportUser(user)) {
+    return NextResponse.json(
+      { error: "site under maintenance" },
+      { status: 503 }
+    );
+  }
 
   await setSessionCookie(
     await createSession({ sub: user.id, email: user.email, name: user.name })

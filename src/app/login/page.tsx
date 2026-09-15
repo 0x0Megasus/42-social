@@ -2,6 +2,9 @@ import { AuthButtons } from "@/components/auth-buttons";
 import { getSession } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
 import { redirect } from "next/navigation";
+import { isMaintenanceMode } from "@/lib/maintenance";
+import { cachedUserById } from "@/lib/db";
+import { isSupportUser } from "@/lib/support";
 
 export default async function Login({
   searchParams,
@@ -10,7 +13,13 @@ export default async function Login({
 }) {
   const session = await getSession();
   const { error, next } = await searchParams;
-  if (session) redirect(safeNext(next));
+  const isMaintenance = isMaintenanceMode();
+  let isSupport = false;
+  if (session?.sub) {
+    const user = await cachedUserById(session.sub);
+    isSupport = isSupportUser(user);
+  }
+  if (session && isSupport) redirect(safeNext(next));
 
   return (
     <section className="mx-auto mt-10 max-w-sm">
@@ -18,11 +27,29 @@ export default async function Login({
         <h1 className="text-center text-2xl font-bold tracking-tight">
           42<span className="text-cyan-500">·</span>social
         </h1>
-        <p className="mt-2 text-center text-[14px] leading-6 text-zinc-500">
-          For 42 / 1337 students.
-          <br />
-          Sign in with Google to join.
-        </p>
+        {isMaintenance && !isSupport ? (
+          <>
+            <p className="mt-2 text-center text-[14px] leading-6 text-rose-600">
+              Site under maintenance.
+            </p>
+            <p className="mt-1 text-center text-[13px] leading-6 text-zinc-500">
+              Only support/owner accounts can log in.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-center text-[14px] leading-6 text-zinc-500">
+              For 42 / 1337 students.
+              <br />
+              Sign in with Google to join.
+            </p>
+            {isMaintenance && (
+              <p className="mt-2 text-center text-[13px] leading-6 text-amber-600">
+                Site under maintenance — support only.
+              </p>
+            )}
+          </>
+        )}
         {error && (
           <p
             role="alert"
