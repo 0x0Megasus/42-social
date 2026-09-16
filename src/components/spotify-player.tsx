@@ -5,10 +5,6 @@ import { ExternalLink, Music } from "lucide-react";
 import { embedSpotifyUrl, spotifySearchUrl } from "@/lib/spotify";
 import type { UserSpotify } from "@/lib/db";
 
-// Favorite song/artist card: clickable cover/title/artist on top, official
-// embed player below. A true custom player can't stream Spotify without
-// full OAuth + Premium, so the compact (80px) official embed is the player
-// — a skeleton with an equalizer covers it until the iframe reports loaded.
 export function SpotifyPlayer({ spotify }: { spotify: UserSpotify }) {
   const [ready, setReady] = useState(false);
   const title =
@@ -68,7 +64,7 @@ export function SpotifyPlayer({ spotify }: { spotify: UserSpotify }) {
               {spotify.subtitle}
             </a>
           ) : (
-            <p className="text-xs text-zinc-500">Open in Spotify to play</p>
+            <p className="text-xs text-zinc-500">Open in Spotify</p>
           )}
         </div>
         <a

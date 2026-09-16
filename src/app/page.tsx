@@ -9,7 +9,6 @@ import { isSupportUser } from "@/lib/support";
 
 export const dynamic = "force-dynamic";
 
-// Gated by middleware — session is guaranteed here.
 export default async function Home() {
   const session = await getSession();
   if (!session) redirect("/login");

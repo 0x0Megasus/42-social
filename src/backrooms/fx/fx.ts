@@ -17,8 +17,6 @@ export type WeaponKind = 'pistol' | 'smg' | 'shotgun';
 
 const MAX_PARTICLES = 1600;
 
-// Kenney CC0 "Particle Pack" style: soft radial sprite generated at runtime
-// (no binary download needed). Used as the Points map for round glow puffs.
 function makeSoftSprite(size = 64): THREE.Texture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = size;
@@ -35,14 +33,12 @@ function makeSoftSprite(size = 64): THREE.Texture {
   return tex;
 }
 
-// Star-shaped muzzle spike (Kenney "flash" style) for impact quads.
 function makeFlashSprite(size = 128): THREE.Texture {
   const cv = document.createElement('canvas');
   cv.width = cv.height = size;
   const ctx = cv.getContext('2d')!;
   const c = size / 2;
   ctx.translate(c, c);
-  // core glow
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, c);
   g.addColorStop(0, 'rgba(255,246,220,1)');
   g.addColorStop(0.25, 'rgba(255,210,130,0.9)');
@@ -50,7 +46,6 @@ function makeFlashSprite(size = 128): THREE.Texture {
   g.addColorStop(1, 'rgba(255,120,30,0)');
   ctx.fillStyle = g;
   ctx.fillRect(-c, -c, size, size);
-  // spikes
   ctx.fillStyle = 'rgba(255,236,190,0.95)';
   for (let i = 0; i < 4; i++) {
     ctx.rotate(Math.PI / 4);
@@ -63,7 +58,6 @@ function makeFlashSprite(size = 128): THREE.Texture {
   return tex;
 }
 
-/** CPU particle system rendered as THREE.Points with vertex colors + soft sprites. */
 export class FXSystem {
   private scene: THREE.Scene;
   private points: THREE.Points;
@@ -73,16 +67,13 @@ export class FXSystem {
   private sizeAttr: THREE.BufferAttribute;
   private particles: Particle[] = [];
 
-  // tracers
   private tracers: { mesh: THREE.Mesh; life: number; maxLife: number }[] = [];
   private tracerPool: THREE.Mesh[] = [];
 
-  // impact flash quads (billboarded star sprites, Kenney-flash style)
   private flashes: { mesh: THREE.Mesh; life: number; maxLife: number }[] = [];
   private flashPool: THREE.Mesh[] = [];
   private flashTex: THREE.Texture;
 
-  // pooled dynamic light for muzzle + impacts (single light, cheap)
   private boomLight: THREE.PointLight;
   private boomT = 0;
   private boomMax = 1;
@@ -135,7 +126,6 @@ export class FXSystem {
     this.points.renderOrder = 5;
     this.scene.add(this.points);
 
-    // tracer pool — thin stretched boxes with additive material
     const tracerGeo = new THREE.BoxGeometry(0.014, 0.014, 1);
     tracerGeo.translate(0, 0, -0.5); // origin at muzzle end
     for (let i = 0; i < 32; i++) {
@@ -156,7 +146,6 @@ export class FXSystem {
       this.tracerPool.push(m);
     }
 
-    // impact flash pool — camera-facing star sprites
     for (let i = 0; i < 12; i++) {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(0.5, 0.5),
@@ -185,10 +174,8 @@ export class FXSystem {
     this.particles.push(p);
   }
 
-  /** World-space muzzle blast: fire cone + smoke + sparks. Call on every shot. */
   muzzle(origin: THREE.Vector3, dir: THREE.Vector3, kind: WeaponKind): void {
     const power = kind === 'shotgun' ? 1.8 : kind === 'smg' ? 0.8 : 1.0;
-    // hot core
     const n = kind === 'shotgun' ? 10 : 6;
     for (let i = 0; i < n; i++) {
       const v = dir.clone().multiplyScalar(randRange(3, 7) * power);
@@ -206,7 +193,6 @@ export class FXSystem {
         drag: 6,
       });
     }
-    // smoke puff drifting up
     const smokeN = kind === 'shotgun' ? 5 : 2;
     for (let i = 0; i < smokeN; i++) {
       this.emit({
@@ -223,7 +209,6 @@ export class FXSystem {
     this.punchLight(origin, kind === 'shotgun' ? 30 : 16);
   }
 
-  /** Ejected brass shell. right = camera right in world space. */
   shell(pos: THREE.Vector3, right: THREE.Vector3): void {
     this.emit({
       pos: pos.clone(),
@@ -241,7 +226,6 @@ export class FXSystem {
     });
   }
 
-  /** Unified impact: flash quad + sparks + smoke + dust. */
   impact(pos: THREE.Vector3, kind: ImpactKind, headshot = false): void {
     this.flashQuad(pos, kind === 'flesh' ? 0.55 : 0.4, kind === 'flesh' ? 0xff4a3c : 0xffd9a0);
     if (kind === 'flesh') {
@@ -397,7 +381,6 @@ export class FXSystem {
   }
 
   update(dt: number, camera?: THREE.Camera): void {
-    // particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
@@ -429,7 +412,6 @@ export class FXSystem {
     this.colAttr.needsUpdate = true;
     this.sizeAttr.needsUpdate = true;
 
-    // tracers
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.life -= dt;
@@ -441,7 +423,6 @@ export class FXSystem {
       }
     }
 
-    // impact flashes — billboard toward camera
     for (let i = this.flashes.length - 1; i >= 0; i--) {
       const f = this.flashes[i];
       f.life -= dt;
@@ -457,7 +438,6 @@ export class FXSystem {
       }
     }
 
-    // pooled light decay
     if (this.boomT > 0) {
       this.boomT -= dt;
       const k = Math.max(0, this.boomT / 0.09);

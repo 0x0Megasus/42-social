@@ -8,11 +8,6 @@ import {
   type Notification,
 } from "@/lib/db";
 
-// Notifications live in per-user keyed maps:
-//   /notifications-by-user/{userId}/{pushKey} = Notification
-// Reads, mark-read, and deletes are all O(my notifications) — never a
-// scan of everyone's. Legacy /notifications array rows (pre-map) are
-// merged on read and mirrored by the backfill; new code writes maps only.
 
 export function newNotification(
   userId: string,
@@ -90,7 +85,6 @@ export async function markAllRead(userId: string): Promise<void> {
         paths[`/notifications-by-user/${userId}/${key}/read`] = true;
     }
   }
-  // Legacy rows are addressed by storage index — resolve fresh per call.
   if (legacy.length > 0) {
     const all = await readCollection("notifications").catch(() => []);
     all.forEach((n, i) => {

@@ -30,14 +30,11 @@ export async function POST(
   if (!post || post.deleted)
     return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // O(1) toggle on the keyed leaf — cost is independent of total likes.
   const byPost = `/likes-by-post/${id}/${session.sub}`;
   const byUser = `/likes-by-user/${session.sub}/${id}`;
   let liked: boolean;
   const mapCur = await readPath<unknown>(byPost).catch(() => null);
   if (!mapCur) {
-    // Pre-map legacy row? Then this tap is an UNLIKE — delete the legacy
-    // leaf instead of creating a map leaf (post-backfill this never hits).
     const legacy = await queryCollectionEntries("likes", {
       orderBy: "postId",
       equalTo: id,
@@ -56,9 +53,6 @@ export async function POST(
   } else {
     await setPath(byPost, null).catch(() => null);
     liked = false;
-    // Hygiene: drop any pre-map duplicate for this exact like so the
-    // legacy array stops growing stale rows (count stays exact regardless
-    // via union in recountPost).
     const legacy = await queryCollectionEntries("likes", {
       orderBy: "postId",
       equalTo: id,
@@ -81,7 +75,6 @@ export async function POST(
   } else {
     await setPath(byUser, null).catch(() => null);
   }
-  // Exact count (map ∪ legacy) + counter write-back for O(1) feed reads.
   const counts = await recountPost(id).catch(() => null);
   return NextResponse.json({ liked, likes: counts?.likes ?? 0 });
 }

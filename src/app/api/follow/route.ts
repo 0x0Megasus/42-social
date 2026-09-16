@@ -30,13 +30,11 @@ export async function POST(req: Request) {
   const target = await readUserById(userId);
   if (!target) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // O(1) toggle on keyed leaves (both directions for both list views).
   const byFollower = `/follows-by-follower/${session.sub}/${userId}`;
   const byFollowing = `/follows-by-following/${userId}/${session.sub}`;
   let following: boolean;
   const mapCur = await readPath<unknown>(byFollower).catch(() => null);
   if (!mapCur) {
-    // Pre-map legacy row? Then this tap is an UNFOLLOW.
     const legacy = await queryCollectionEntries("follows", {
       orderBy: "followerId",
       equalTo: session.sub,
@@ -68,7 +66,6 @@ export async function POST(req: Request) {
     }
   }
   await setPath(byFollowing, following ? true : null).catch(() => null);
-  // Exact counter bumps (only on actual state change — toggle is exact).
   await Promise.all([
     bumpUserCounter(userId, "followersCount", following ? 1 : -1),
     bumpUserCounter(session.sub, "followingCount", following ? 1 : -1),

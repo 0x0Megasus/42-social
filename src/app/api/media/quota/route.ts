@@ -8,9 +8,6 @@ import {
 } from "@/lib/db";
 import { destroyAssets } from "@/lib/cloudinary-admin";
 
-// Daily per-user upload budget (far inside Cloudinary's free quotas —
-// abuse insurance, not the billing boundary: 25 credits/month ≈
-// 25 GB pooled storage/bandwidth).
 const DAILY_BYTES = 200 * 1024 * 1024;
 const DAILY_UPLOADS = 200;
 const PENDING_TTL_MS = 2 * 3600_000;
@@ -19,9 +16,6 @@ function ownPublicId(uid: string, publicId: string): boolean {
   return publicId.startsWith(`42social/${uid}/`);
 }
 
-// Delete this user's stale pending uploads (uploaded but never attached
-// to a post/message — tab closed mid-flow). Bounded per user, runs inside
-// the quota check so no cron is needed.
 async function sweepPending(uid: string): Promise<void> {
   const pending = await readPath<
     Record<string, { publicId?: string; at?: number }>
@@ -46,9 +40,6 @@ async function sweepPending(uid: string): Promise<void> {
   ).catch(() => null);
 }
 
-// POST /api/media/quota { kind, bytes, publicId } -> { ok } | 429
-// Gate every upload: daily caps + orphan sweep + pending marker (cleared
-// by /api/media/complete; stale markers are swept here on later calls).
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session)

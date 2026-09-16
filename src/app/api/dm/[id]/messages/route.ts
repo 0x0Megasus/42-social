@@ -25,9 +25,6 @@ function isParticipant(
 
 const PAGE = 100;
 
-// GET -> thread page + peer info. Marks the returned peer messages read.
-// ?offset=N pages older history (in-memory slice of the indexed convo
-// fetch; new arrivals shift offsets — fine for history browsing).
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -53,7 +50,6 @@ export async function GET(
       limit: offset + PAGE + 1,
     }).catch(() => []),
   ]);
-  // orderBy convoId groups the thread; chronological order in memory.
   const sorted = entries
     .map((e) => ({ ...e }))
     .sort((a, b) => a.row.createdAt.localeCompare(b.row.createdAt));
@@ -85,7 +81,6 @@ export async function GET(
   );
 }
 
-// POST -> send message { body, kind }
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -111,8 +106,6 @@ export async function POST(
   const text = clean(payload.body, 500);
   if (!text && !isVoice)
     return NextResponse.json({ error: "invalid" }, { status: 400 });
-  // Voice attachments are validated field-by-field (URLs must be https,
-  // durations/bytes within caps, peaks a small number array).
   let attachment: {
     url: string;
     duration: number | null;
@@ -206,7 +199,6 @@ export async function POST(
     createdAt: now,
     attachment,
   };
-  // Push-key write: conflict-free, O(1), no transaction.
   await setPath(`/messages/${newPushKey("messages")}`, m);
   return NextResponse.json({ message: { ...m, mine: true } }, { status: 201 });
 }

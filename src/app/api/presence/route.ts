@@ -5,8 +5,6 @@ import { getRtdb, rtdb } from "@/lib/fbrdb";
 
 type UserRow = { id?: string; lastSeen?: string | null };
 
-// Scoped read: /users only (never the whole root — root includes posts,
-// messages, games… and times out -> 500). Handles array or object shapes.
 async function lastSeenFor(ids: string[]): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
   if (ids.length === 0) return out;
@@ -25,8 +23,6 @@ async function lastSeenFor(ids: string[]): Promise<Map<string, string | null>> {
   return out;
 }
 
-// Best-effort leaf write: /users/{index}/lastSeen (no root transaction,
-// so heartbeats never contend with the feed/games and never 500 the tab).
 async function touchLastSeen(userId: string, iso: string): Promise<void> {
   const snap = await rtdb("users.idx", () => getRtdb().ref("/users").get());
   const raw = snap.val() as unknown;
@@ -47,9 +43,6 @@ async function touchLastSeen(userId: string, iso: string): Promise<void> {
   );
 }
 
-// GET /api/presence?ids=a,b -> { status: { id: { online, lastSeen } } }
-// Never 500s: presence is best-effort — on RTDB failure return beats-only
-// (or empty) status with 200 so polling tabs never toast/crash.
 export async function GET(req: Request) {
   const session = await getSession();
   if (!session)
@@ -78,7 +71,6 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({ status });
   } catch {
-    // RTDB down/slow: fall back to beats-only, still 200.
     try {
       const beats = await beatsFor(ids);
       const now = Date.now();
@@ -98,7 +90,6 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/presence -> heartbeat (called every ~20s by open tabs)
 export async function POST() {
   const session = await getSession();
   if (!session)
@@ -107,12 +98,10 @@ export async function POST() {
   try {
     await touch(session.sub);
   } catch {
-    // heartbeat itself failed — still try to record lastSeen, else 200 anyway
   }
   try {
     await touchLastSeen(session.sub, now);
   } catch {
-    /* best-effort: heartbeat already counted */
   }
   return NextResponse.json({ ok: true, lastSeen: now });
 }

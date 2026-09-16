@@ -7,7 +7,6 @@ const warn = boot.querySelector('.warn') as HTMLElement;
 const app = document.getElementById('app')!;
 const game = new Game(app);
 
-// release the boot overlay as soon as the menu is interactive
 let released = false;
 const release = () => {
   if (released) return;
@@ -17,7 +16,6 @@ const release = () => {
   setTimeout(() => boot.remove(), 800);
 };
 
-// real asset progress → boot bar
 const WARNINGS = ['SIGNAL FOUND — 60Hz HUM DETECTED', 'LOADING WEAPONRY…', 'CALIBRATING HORDES…', 'DO NOT NO-CLIP YET'];
 let flip = 0;
 void game
@@ -35,8 +33,6 @@ void game
     setTimeout(release, 250);
   });
 
-// absolute fallback: never trap the player behind the boot screen
 setTimeout(release, 2500);
-// also release on any interaction (assets keep loading in background)
 window.addEventListener('pointerdown', release, { once: true });
 window.addEventListener('keydown', release, { once: true });

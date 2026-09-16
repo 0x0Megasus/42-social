@@ -7,10 +7,6 @@ import type { Database } from "firebase-admin/database";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/games/[code]/stream -> Server-Sent Events with the per-viewer
-// room view. RTDB's `on('value')` listener pushes every opponent move the
-// moment it commits (~50–200ms vs the old 2s poll ceiling). The browser's
-// EventSource auto-reconnects, so polling in game-room stays as fallback.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }
@@ -42,14 +38,11 @@ export async function GET(
               : `event: room\ndata: ${JSON.stringify(payload)}\n\n`;
           controller.enqueue(encoder.encode(body));
         } catch {
-          /* stream already torn down */
         }
       };
 
-      // Nginx/proxies buffer SSE unless the first bytes flush early.
       controller.enqueue(encoder.encode(":ok\n\n"));
 
-      // Initial snapshot so the client can paint immediately (no extra GET).
       const initial = await buildView(room, meId);
       send(initial);
 
@@ -63,8 +56,6 @@ export async function GET(
       ref = getRtdb().ref(`/games/${code.toUpperCase()}`);
       ref.on("value", handler as never);
 
-      // Comment heartbeat keeps intermediaries from closing idle streams
-      // (waiting rooms can go minutes without a move).
       heartbeat = setInterval(() => send(String(Date.now())), 25_000);
 
       after(() => {

@@ -1,5 +1,3 @@
-// Pure Connect Four engine — 6 rows x 7 cols, gravity drops.
-// Board[row][col], row 0 = top.
 export type C4Mark = "R" | "Y";
 export type C4Board = (C4Mark | null)[][];
 
@@ -10,7 +8,6 @@ export function freshC4(): C4Board {
   return Array.from({ length: C4_ROWS }, () => Array(C4_COLS).fill(null));
 }
 
-// Returns the row a disc lands on, or -1 when the column is full/invalid.
 export function c4Drop(board: C4Board, col: number): number {
   if (!Number.isInteger(col) || col < 0 || col >= C4_COLS) return -1;
   for (let r = C4_ROWS - 1; r >= 0; r--) {

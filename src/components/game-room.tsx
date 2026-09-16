@@ -34,7 +34,6 @@ import {
 import { playLose, playMove, playWin } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 
-// Three.js must never enter the server bundle — client-only chunk.
 const BackroomsView = dynamic(
   () => import("@/components/backrooms-view").then((m) => m.BackroomsView),
   {
@@ -79,10 +78,9 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
     (next: GameView, confirmed: boolean) => {
       const sig = roomSig(next);
       if (!confirmed && sigRef.current === sig) {
-        return; // duplicate SSE event (reconnect replay) — skip
+        return;
       }
       if (sigRef.current && sigRef.current !== sig) {
-        // something changed: move sound, win/lose jingle
         if (next.status === "over") {
           if (next.winnerId === meId) playWin();
           else if (next.winnerId) playLose();
@@ -106,8 +104,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         return;
       }
       if (res.status === 404) {
-        // Never auto-eject: a missing read can be transient while the room
-        // still exists. Park on an inline panel, keep polling for recovery.
         missingRef.current += 1;
         if (missingRef.current >= 2) setGone(true);
         else setReconnecting(true);
@@ -123,16 +119,12 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
       const d = await res.json();
       applyRoom(d.room as GameView, true);
     } catch {
-      // offline/timeout: keep board, flag the connection
       setReconnecting(true);
     } finally {
       inflightRef.current = false;
     }
   }, [applyRoom, code, router]);
 
-  // SSE: the moment the opponent's move commits, RTDB pushes the room to us
-  // (~50–200ms end-to-end vs the old 0–2s poll ceiling). EventSource
-  // auto-reconnects; the 2s poll below remains as fallback + 404 sentinel.
   useEffect(() => {
     const es = new EventSource(`/api/games/${code}/stream`);
     es.addEventListener("room", (ev) => {
@@ -142,7 +134,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         const next = JSON.parse((ev as MessageEvent).data) as GameView;
         applyRoom(next, true);
       } catch {
-        /* malformed frame — poll will correct */
       }
     });
     es.onerror = () => {
@@ -196,9 +187,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
     }
   }
 
-  // Optimistic move: preview the result locally, send to the server in the
-  // background. An illegal preview never even hits the network; the very
-  // next confirmed snapshot (SSE or POST response) replaces the preview.
   function moveOptimistic(
     body: object,
     preview: (() => GameView | null) | null
@@ -206,7 +194,7 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
     if (busy) return;
     if (preview) {
       const next = preview();
-      if (!next) return; // illegal locally — don't round-trip
+      if (!next) return;
       const sig = roomSig(next);
       if (sig !== sigRef.current) {
         sigRef.current = sig;
@@ -216,8 +204,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
     void act("move", body);
   }
 
-  // Backrooms: transmit one finished run. No optimistic preview — the run
-  // already happened locally; the POST settles the room (and the duel).
   async function submitRun(result: RunResult) {
     if (busy) return;
     setBusy(true);
@@ -353,7 +339,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         </span>
       </div>
 
-      {/* players */}
       <div className="grid grid-cols-2 gap-2">
         {(
           [
@@ -401,7 +386,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         ))}
       </div>
 
-      {/* status */}
       <div
         role="status"
         className="rounded-2xl border border-zinc-200 bg-white p-3 text-center text-[14px] font-semibold dark:border-zinc-800 dark:bg-zinc-950"
@@ -452,7 +436,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         )}
       </div>
 
-      {/* duel results (revealed when both runs are in) */}
       {isBackrooms && brBoard?.results && (
         <div
           aria-label="Duel results"
@@ -493,7 +476,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         </div>
       )}
 
-      {/* board (backrooms uses the full column width for its 16:9 stage) */}
       <div className={cn("mx-auto w-full", isBackrooms ? "max-w-none" : "max-w-sm")}>
         {isBackrooms && brBoard ? (
           room.status === "waiting" ? (
@@ -642,7 +624,6 @@ export function GameRoom({ code, meId }: { code: string; meId: string }) {
         )}
       </div>
 
-      {/* actions */}
       <div className="flex items-center justify-center gap-2">
         {room.status === "waiting" && !room.myMark && room.hostId !== meId && (
           <button

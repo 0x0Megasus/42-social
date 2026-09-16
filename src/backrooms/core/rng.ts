@@ -1,4 +1,3 @@
-/** Mulberry32 PRNG — small, fast, deterministic. */
 export class RNG {
   private s: number;
 
@@ -30,7 +29,6 @@ export class RNG {
     return this.next() < p;
   }
 
-  /** Fisher-Yates shuffle in place. */
   shuffle<T>(arr: T[]): T[] {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(this.next() * (i + 1));
@@ -40,5 +38,4 @@ export class RNG {
   }
 }
 
-/** Shared gameplay RNG (non-deterministic across sessions). */
 export const gameRNG = new RNG((Math.random() * 0xffffffff) >>> 0);

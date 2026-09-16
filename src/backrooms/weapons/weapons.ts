@@ -73,7 +73,6 @@ export const WEAPONS: WeaponSpec[] = [
   },
 ];
 
-/** A single slot in the inventory. */
 type Slot = {
   spec: WeaponSpec;
   ammo: number;
@@ -88,15 +87,12 @@ export class WeaponSystem {
   private muzzles: THREE.Vector3[] = [];
   private idx = 0;
   private swayT = 0;
-  // Hip-fire mount in camera space: right, down, forward.
   private static readonly VM_BASE = new THREE.Vector3(0.22, -0.2, -0.45);
 
-  // recoil state
   private kickZ = 0;
   private pitchOff = 0;
   private yawOff = 0;
 
-  // muzzle flash
   private flash: THREE.Mesh;
   private flashLight: THREE.PointLight;
   private flashT = 0;
@@ -116,7 +112,6 @@ export class WeaponSystem {
     this.audio = audio;
     this.slots = WEAPONS.map((spec) => ({ spec, ammo: spec.magSize, cooldown: 0, reloading: 0 }));
 
-    // temporary fallback viewmodels immediately; upgraded when GLBs finish loading
     this.flash = new THREE.Mesh(
       new THREE.PlaneGeometry(0.22, 0.22),
       new THREE.MeshBasicMaterial({
@@ -145,13 +140,11 @@ export class WeaponSystem {
     this.updateFlashPosition();
   }
 
-  /** Upgrade to real GLB viewmodels once assets load. */
   async loadViewModels(getModel: (key: string) => ArrayBuffer | undefined): Promise<void> {
     const loaded: { group: THREE.Group; muzzleLocal: THREE.Vector3 }[] = [];
     for (const s of this.slots) {
       loaded.push(await buildGLBViewModel(s.spec.modelKey, getModel(s.spec.modelKey), s.spec));
     }
-    // swap in
     for (let i = 0; i < this.vms.length; i++) {
       this.camera.remove(this.vms[i]);
       const vm = loaded[i].group;
@@ -208,7 +201,6 @@ export class WeaponSystem {
     this.onAmmoChange?.(this.idx, s.ammo, false);
   }
 
-  /** Fire if possible. origin = world-space muzzle origin, dir = camera forward. */
   tryFire(origin: THREE.Vector3, dir: THREE.Vector3, zombies: ZombiePool): void {
     const s = this.current;
     if (s.cooldown > 0 || s.reloading > 0) return;
@@ -222,17 +214,14 @@ export class WeaponSystem {
     this.onShoot?.(s.spec);
     this.onAmmoChange?.(this.idx, s.ammo, false);
 
-    // recoil
     this.kickZ += s.spec.recoilKick * 2.2;
     this.pitchOff += s.spec.recoilKick * 0.55;
     this.yawOff += randRange(-1, 1) * s.spec.recoilKick * 0.12;
-    // per-weapon muzzle presence: shotgun booms longer + bigger
     this.flashDur = s.spec.audio === 'shotgun' ? 0.09 : s.spec.audio === 'smg' ? 0.045 : 0.06;
     this.flashT = this.flashDur;
     const flashScale = s.spec.audio === 'shotgun' ? 0.42 : s.spec.audio === 'smg' ? 0.24 : 0.3;
     this.flash.scale.setScalar(flashScale);
 
-    // hitscan per pellet
     const ray = new THREE.Raycaster();
     ray.far = s.spec.range;
     let anyHit = false;
@@ -251,7 +240,6 @@ export class WeaponSystem {
       }
       ray.set(origin, d);
 
-      // zombie intersect — spheres at body/head heights
       let bestT = Infinity;
       let bestZombie = null as (typeof zombies.items)[number] | null;
       let head = false;
@@ -279,7 +267,6 @@ export class WeaponSystem {
         }
       }
 
-      // wall check — march the ray against the cell grid
       const cell = 4;
       const step = 0.25;
       let wallT = s.spec.range;
@@ -313,11 +300,9 @@ export class WeaponSystem {
     }
     void anyKill;
     if (anyHit) {
-      // hitmarker sound handled by game via onHit
     }
   }
 
-  /** Inject level solidity test to avoid circular import. */
   setSolidityTest(fn: (x: number, z: number) => boolean): void {
     this.solidLookup = fn;
   }
@@ -333,13 +318,11 @@ export class WeaponSystem {
       if (s.reloading <= 0) this.finishReload();
     }
 
-    // sway
     this.swayT += dt * (sprinting ? 11 : 7);
     const vm = this.vms[this.idx];
     const bobX = Math.cos(this.swayT) * 0.006 * Math.min(1, movingSpeed / 4);
     const bobY = Math.sin(this.swayT * 2) * 0.005 * Math.min(1, movingSpeed / 4);
 
-    // reload dip
     let reloadDip = 0;
     let reloadTilt = 0;
     if (s.reloading > 0) {
@@ -360,7 +343,6 @@ export class WeaponSystem {
     this.pitchOff = damp(this.pitchOff, 0, 9, dt);
     this.yawOff = damp(this.yawOff, 0, 9, dt);
 
-    // muzzle flash follows the current gun's barrel tip
     if (this.flashT > 0) {
       this.flashT -= dt;
       const m = this.flash.material as THREE.MeshBasicMaterial;
@@ -375,7 +357,6 @@ export class WeaponSystem {
     }
   }
 
-  /** World-space barrel tip — spawn tracers / muzzle smoke from here. */
   getMuzzleWorld(target = new THREE.Vector3()): THREE.Vector3 {
     target.copy(this.flash.position);
     return this.camera.localToWorld(target);
@@ -405,7 +386,6 @@ export class WeaponSystem {
     this.updateFlashPosition();
   }
 
-  /** Muzzle flash + light follow the barrel tip in camera space. */
   private updateFlashPosition(): void {
     const vm = this.vms[this.idx];
     const m = this.muzzles[this.idx];

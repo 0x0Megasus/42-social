@@ -1,6 +1,3 @@
-// Shared API contracts (skill: typescript-pro, api-design-principles).
-// Single source of truth for shapes sent over /api/* — server builds them,
-// client consumes them. No `any`, no duplicated interfaces.
 
 export type PublicUser = {
   id: string;

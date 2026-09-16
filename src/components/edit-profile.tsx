@@ -47,8 +47,6 @@ export function EditProfileForm({
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SpotifySearchResult[]>([]);
   const [searched, setSearched] = useState(false);
-  // True once the server says search is unconfigured — the box swaps for a
-  // paste-link hint instead of failing every keystroke.
   const [searchGone, setSearchGone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

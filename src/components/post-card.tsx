@@ -69,9 +69,6 @@ export function Avatar({
     online === undefined ? null : (
       <StatusDot online={online} size={Math.max(10, size * 0.3)} />
     );
-  // SSR/cached images can finish before onLoad attaches (missed event →
-  // stuck on the initial forever). Sync with the real decode state on
-  // mount and whenever the url changes.
   useEffect(() => {
     const el = imgRef.current;
     setLoaded(!!el && el.complete && el.naturalWidth > 0);
@@ -93,7 +90,6 @@ export function Avatar({
       style={{ width: size, height: size }}
     >
       <span className="absolute inset-0 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-        {/* placeholder: initial while image loads */}
         <span
           aria-hidden
           className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-cyan-400 to-zinc-700 font-bold text-white"
@@ -109,9 +105,6 @@ export function Avatar({
           width={size}
           height={size}
           loading="lazy"
-          // Google avatar hosts (lh3.googleusercontent.com) can refuse
-          // requests carrying a Referer — omit it so hotlinked profile
-          // photos actually load instead of degrading to initials.
           referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
@@ -131,11 +124,6 @@ export type CommentAuthor = {
   isSupport?: boolean | null;
 };
 
-// Post attachments: images load a thumbnail first, then swap to full
-// quality the moment they scroll into view (viewport-aware loading).
-// Tap opens a fullscreen lightbox. Videos use the custom player and pause
-// themselves the moment the thread opens (inline or focus popup), so the
-// user plays them in the comments view instead.
 export function PostMedia({
   post,
   suspended,
@@ -182,9 +170,6 @@ export function PostMedia({
             onClick={() => setExpanded(true)}
             aria-label="View image fullscreen"
             className="mt-3 block w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-black"
-            // FB/X-style fit-inside: reserve the natural ratio (stored at
-            // upload) so the layout never jumps, cap the height so
-            // portraits stay compact, and never crop or stretch.
             style={
               post.imgW && post.imgH
                 ? { aspectRatio: `${post.imgW} / ${post.imgH}`, maxHeight: 480 }
@@ -230,7 +215,6 @@ export function PostMedia({
   return null;
 }
 
-// Visibility wrapper: reports when children enter the viewport (once).
 function InView({
   onChange,
   children,
@@ -292,13 +276,8 @@ export function PostCard({
   focused?: boolean;
   meName?: string;
   meId?: string;
-  // When set, a comment click isolates the post in a focus popup instead
-  // of expanding the thread inline.
   onFocusPost?: (post: FeedPost) => void;
-  // Preloaded thread (focus popup, dedicated page) — the controlled-open
-  // surfaces never receive the click that triggers loadComments.
   initialComments?: FeedComment[];
-  // Viewer is site support: can delete any post (never edit others').
   viewerIsSupport?: boolean;
 }) {
   const router = useRouter();
@@ -323,7 +302,7 @@ export function PostCard({
   async function toggleLike() {
     const prev = liked;
     const prevCount = likes;
-    setLiked(!prev); // optimistic
+    setLiked(!prev);
     setLikes((n) => n + (prev ? -1 : 1));
     try {
       const res = await fetch(`/api/posts/${post.id}/like`, { method: "POST" });
@@ -370,10 +349,8 @@ export function PostCard({
       const list = d.comments ?? [];
       setComments(list);
       onUpdate?.(post.id, { comments: list.length });
-      // open at the latest comments
       requestAnimationFrame(() => scrollChatToBottom(false));
     } catch {
-      /* keep closed on failure */
       setIsOpen(false);
     } finally {
       setLoadingComments(false);
@@ -389,7 +366,6 @@ export function PostCard({
     const msg = clean(text, 300);
     if (!msg || busy) return;
     setBusy(true);
-    // optimistic line (carries the reply snapshot so the quote shows instantly)
     const replySnap: QuotedReply = replyTo
       ? {
           id: replyTo.id,
@@ -439,8 +415,6 @@ export function PostCard({
         return;
       }
       const d = await res.json();
-      // NOTE: both setStates run sequentially in the handler — never nest
-      // one component's setState inside another's updater (impure updater).
       setComments((c) => c.map((x) => (x.id === temp.id ? d.comment : x)));
       if (typeof d.total === "number") onUpdate?.(post.id, { comments: d.total });
     } catch {
@@ -453,8 +427,6 @@ export function PostCard({
 
   const [editingPost, setEditingPost] = useState(false);
   const [postDraft, setPostDraft] = useState(post.body);
-  // Local overrides: instant feedback even where no onUpdate is wired (profile).
-  // Cleared automatically once fresh props arrive (see effect below).
   const [bodyOverride, setBodyOverride] = useState<string | null>(null);
   const [editedOverride, setEditedOverride] = useState(false);
   const [pinnedOverride, setPinnedOverride] = useState<boolean | null>(null);
@@ -505,12 +477,8 @@ export function PostCard({
   }
 
   const isMine = !!meId && post.author?.id === meId && !post.deleted;
-  // Support deletes anything (moderation); editing stays author-only.
   const canDelete =
     !!meId && !post.deleted && (post.author?.id === meId || viewerIsSupport);
-  // Founder announcements: support users can pin their own posts to the
-  // top of everyone's feed. Server enforces strictly; the author snapshot
-  // may predate a support grant, so the live viewer flag also unlocks it.
   const canPin = isMine && !!(post.author?.isSupport || viewerIsSupport);
 
   async function savePostEdit() {
@@ -552,8 +520,6 @@ export function PostCard({
     try {
       const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
-      // Server hard-deletes the row — drop it locally (feed filters
-      // `deleted` patches out) and skip reading a body that no longer exists.
       onUpdate?.(post.id, { deleted: true });
       setGone(true);
       setConfirmDeletePost(false);
@@ -607,7 +573,6 @@ export function PostCard({
         return;
       }
     } catch {
-      /* user cancelled or share failed — fall through to clipboard */
     }
     try {
       await navigator.clipboard.writeText(url);
@@ -640,7 +605,6 @@ export function PostCard({
         return;
       }
       if (!res.ok) throw new Error();
-      // API returns the flat comment ({...fields, author, total}) — NOT nested.
       const d = await res.json();
       const updated: FeedComment = {
         id: d.id ?? id,
@@ -663,7 +627,6 @@ export function PostCard({
 
   async function deleteComment(id: string) {
     const prev = [...comments];
-    // deleted comments vanish entirely — no tombstone
     setComments((cs) => cs.filter((x) => x.id !== id));
     setConfirmDeleteCommentId(null);
     try {
@@ -687,14 +650,12 @@ export function PostCard({
     }
   }, [focused]);
 
-  // Fresh props arrived (poll / revalidate) — drop local overrides.
   useEffect(() => {
     setBodyOverride(null);
     setEditedOverride(false);
     setPinnedOverride(null);
   }, [post.body, post.edited, post.pinned]);
 
-  // Deleted posts vanish entirely — no tombstone, anywhere.
   if (post.deleted || gone) return null;
 
   const displayBody = bodyOverride ?? post.body;
@@ -885,8 +846,6 @@ export function PostCard({
         </button>
       </div>
       {isOpen && (
-        // Thread is a continuation of the card: same surface, one top
-        // hairline — no nested box (skills: tailwind-design-system restraint).
         <div className="mt-2 border-t border-zinc-200 dark:border-zinc-800">
           <div className="relative">
           <div
@@ -923,7 +882,6 @@ export function PostCard({
                   {who}
                 </span>
               );
-              // deleted comments are filtered server-side; guard stays for safety
               if (c.deleted) return null;
               if (c.kind === "sticker") {
                 return (
@@ -1013,7 +971,6 @@ export function PostCard({
                       <div
                         className={cn(
                           "mt-0.5 w-fit max-w-full rounded-2xl rounded-tl-md border px-2.5 py-1.5 text-[13.5px] leading-5",
-                          // All bubbles share one dark surface.
                           mine
                             ? "border-zinc-900 bg-zinc-900 text-white dark:border-[#2c2d2e] dark:bg-[#2c2d2e] dark:text-white"
                             : "border-zinc-200 bg-white text-zinc-900 dark:border-[#2c2d2e] dark:bg-[#2c2d2e] dark:text-zinc-100"

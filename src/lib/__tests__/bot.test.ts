@@ -43,7 +43,6 @@ describe("bot: tictactoe", () => {
     b[4] = "O";
     b[7] = "X";
     b[2] = "X";
-    // O wins on the 0-4-8 diagonal at cell 8
     const mv = botInputFor("tictactoe", b, GUEST) as { cell: number };
     expect(mv.cell).toBe(8);
   });
@@ -66,7 +65,6 @@ describe("bot: tictactoe", () => {
 describe("bot: connectfour", () => {
   it("wins when a winning column exists", () => {
     const b = freshC4();
-    // Bot (Y) has three in a row on the bottom row, cols 0-2, open at 3.
     const drop = (mark: "R" | "Y", col: number) => {
       for (let r = 5; r >= 0; r--) {
         if (!b[r][col]) {
@@ -108,7 +106,6 @@ describe("bot: connectfour", () => {
 
 describe("bot: chess", () => {
   it("delivers mate in one", () => {
-    // Back-rank mate: white rook to d8.
     const fen = "6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1";
     const mv = botInputFor("chess", { fen, history: [] }, "bot:chess") as {
       from: string;
@@ -119,7 +116,6 @@ describe("bot: chess", () => {
   });
 
   it("takes the hanging queen (only capture available)", () => {
-    // White queen on d3, black queen on d5 with an open d-file between them.
     const fen = "rnb1kbnr/pppppppp/8/3q4/8/3Q4/PPPP1PPP/RNB1KBNR w - - 0 1";
     const mv = botInputFor("chess", { fen, history: [] }, "bot:chess") as {
       from: string;
@@ -164,7 +160,6 @@ describe("bot: rps + number", () => {
       tries: { [HOST]: 2 },
     };
     const mv = botInputFor("number", b, GUEST) as { guess: number };
-    // below: 50, above: 87 -> midpoint 68
     expect(mv.guess).toBe(68);
   });
 

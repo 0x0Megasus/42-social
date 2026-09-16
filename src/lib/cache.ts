@@ -1,13 +1,3 @@
-// Tiny server-side cache: TTL LRU + single-flight.
-//
-// Why this shape (skill: database-architect, cache-aside):
-// - Serverless instances don't share memory, so this is strictly a
-//   per-instance burst absorber, not a source of truth. Every entry has a
-//   short TTL (seconds) — worst case a reader sees seconds-old profile
-//   data, never wrong writes (writes always go to RTDB).
-// - Single-flight: N concurrent requests for the same cold key trigger ONE
-//   upstream fetch (thundering-herd protection on popular profiles/posts).
-// - Bounded size (LRU eviction) so a large user base can't grow memory.
 
 type Entry = { at: number; value: unknown; inflight?: Promise<unknown> };
 
@@ -15,7 +5,6 @@ const MAX_ENTRIES = 500;
 const store = new Map<string, Entry>();
 
 function touch(key: string, entry: Entry): void {
-  // Map preserves insertion order — re-insert = most-recently-used.
   store.delete(key);
   store.set(key, entry);
   while (store.size > MAX_ENTRIES) {
@@ -47,8 +36,6 @@ export async function cached<T>(
       return v;
     },
     (e) => {
-      // Failed fetch must not poison the cache — drop the entry so the
-      // next caller retries upstream.
       store.delete(key);
       throw e;
     }

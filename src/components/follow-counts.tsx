@@ -14,7 +14,6 @@ export type FollowUser = {
 
 type Tab = "followers" | "following";
 
-// Clickable followers/following counts that open a modal with the user list.
 export function FollowCounts({
   followers,
   following,
@@ -25,7 +24,6 @@ export function FollowCounts({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("followers");
 
-  // Esc closes; lock body scroll while open.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);

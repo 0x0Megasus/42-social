@@ -1,7 +1,5 @@
 import { ChatSkeleton } from "@/components/skeletons";
 
-// Mirrors DmChat: header (back + avatar 36 + name/presence) → thread panel →
-// composer bar. Same breakout width + height as the real page.
 export default function Loading() {
   return (
     <div className="relative left-1/2 flex h-[calc(100dvh-10rem)] min-h-[20rem] w-[min(56rem,calc(100vw-2rem))] max-w-none -translate-x-1/2 flex-col overflow-hidden">

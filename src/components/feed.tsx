@@ -10,10 +10,6 @@ import type { FeedPost } from "@/components/post-card";
 
 export type FeedAuthor = NonNullable<FeedPost["author"]>;
 
-// Client feed: one ranked stream (no sort tabs — recency is a ranking
-// signal, not a separate feed). Instant optimistic inserts + live counts
-// (poll + focus refresh) + offset pagination ("load more" appends;
-// refresh resets to page one).
 export function Feed({
   initial,
   initialHasMore,
@@ -31,8 +27,6 @@ export function Feed({
   const focusId = searchParams.get("focus");
   const warnedFocus = useRef<string | null>(null);
 
-  // Notification deep-link target is gone (deleted) — say so, don't strand
-  // the user on a highlight that will never appear.
   useEffect(() => {
     if (!focusId || warnedFocus.current === focusId) return;
     if (!posts.some((p) => p.id === focusId)) {
@@ -53,8 +47,6 @@ export function Feed({
   );
 
   const refresh = useCallback(async () => {
-    // Timeout-guarded via api() (skill: react-best-practices): polling can
-    // never stick a spinner forever; failures keep the current feed.
     try {
       const res = await api("/api/posts", { cache: "no-store" });
       if (!res.ok) return;
@@ -64,11 +56,9 @@ export function Feed({
         setHasMore(d.hasMore === true);
       }
     } catch {
-      /* offline/timeout: keep current feed */
     }
   }, []);
 
-  // Append the next ranked page (offset into the ranked window).
   const loadMore = useCallback(async () => {
     if (loadingMore) return;
     setLoadingMore(true);

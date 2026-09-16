@@ -73,7 +73,6 @@ describe("previewChessMove", () => {
   });
 
   it("defaults promotion to queen, matching the server", () => {
-    // Pawn on a7, black king out of the way, white to move.
     const fen = "7k/P7/8/8/8/8/8/K7 w - - 0 1";
     const r = previewChessMove({ fen, history: [] }, "a7", "a8");
     expect(r.ok).toBe(true);

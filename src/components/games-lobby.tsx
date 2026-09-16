@@ -15,8 +15,6 @@ const GAMES: { kind: GameKind; blurb: string; emoji: string }[] = [
   { kind: "connectfour", blurb: "Drop discs, connect four.", emoji: "🔴" },
   { kind: "tictactoe", blurb: "Three in a row. Fast and ruthless.", emoji: "⭕" },
   { kind: "rps", blurb: "Best of 5 — bluff, read, strike.", emoji: "✊" },
-  // Retired: "number" + "twentyone" stay playable via existing rooms/engines
-  // but are no longer offered — see POST /api/games.
 ];
 
 export function GamesLobby({
@@ -30,13 +28,9 @@ export function GamesLobby({
   const [code, setCode] = useState("");
   const [creating, setCreating] = useState<GameKind | null>(null);
   const [botting, setBotting] = useState<GameKind | null>(null);
-  // Solo and Duel share the "backrooms" kind, so they track their own
-  // spinner — otherwise both buttons load together.
   const [creatingBk, setCreatingBk] = useState<"solo" | "duel" | null>(null);
   const [joining, setJoining] = useState(false);
 
-  // Back/forward nav can serve a cached page that predates a room the user
-  // just created — re-fetch the server payload on entry so it shows up.
   useEffect(() => {
     router.refresh();
   }, [router]);
@@ -77,8 +71,6 @@ export function GamesLobby({
     }
   }
 
-  // Backrooms: solo drops straight into a run; duel creates a room whose
-  // code you share (join box below also works for duels).
   async function createBackrooms(mode: "solo" | "duel") {
     if (creatingBk) return;
     setCreatingBk(mode);
@@ -97,8 +89,6 @@ export function GamesLobby({
     }
   }
 
-  // Accepts a bare code (BK9YW8) or a full invite link
-  // (http://localhost:3000/games/BK9YW8) — extracts the code either way.
   function extractCode(raw: string): string {
     const s = raw.trim().toUpperCase();
     const clean = (x: string) => x.replace(/[^A-Z0-9]/g, "");

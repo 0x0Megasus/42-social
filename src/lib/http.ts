@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ApiError } from "@/lib/contracts";
 
-// Consistent JSON envelopes (skill: api-design-principles).
-// Every route returns { data } on success or { error, retryAfter? } on failure
-// with `Retry-After` + `X-RateLimit-*` headers where rate limits apply.
 
 export function jsonOk<T>(data: T, status = 200, headers?: HeadersInit) {
   return NextResponse.json(data, { status, headers });

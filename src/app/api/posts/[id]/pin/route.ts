@@ -13,10 +13,6 @@ import { rateLimit } from "@/lib/ratelimit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// POST /api/posts/[id]/pin { pinned: boolean } — founder announcement.
-// Support users can pin their OWN posts; pinned posts top everyone's feed.
-// Triple-write: by-id map row + array leaf + /pinned-posts index (the feed
-// discovers pinned posts through the index, never a full scan).
 export async function POST(req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -44,11 +40,9 @@ export async function POST(req: Request, { params }: Ctx) {
   const next = {
     ...p,
     pinned,
-    // Re-pinning refreshes the timestamp so it jumps back to the top.
     pinnedAt: pinned ? new Date().toISOString() : null,
   };
   await writePostById(id, next);
-  // Array leaf addressed by the real storage key (see collectionEntries).
   const entries = await readCollectionEntries("posts");
   const hit = entries.find(({ row }) => row.id === id);
   const paths: Record<string, unknown> = {

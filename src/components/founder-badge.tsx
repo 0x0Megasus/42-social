@@ -3,13 +3,6 @@
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
-// Founder seal — bespoke gold starburst (X-style organization check),
-// not the generic blue check everyone gets. Marks the site owner so users
-// know who they're talking to. Shown next to names on posts, comments,
-// explore rows, and the profile header.
-//
-// The bubble opens on hover (desktop) AND on tap (phones have no hover):
-// tap toggles it, tapping anywhere else or Escape closes it.
 export function FounderBadge({ className = "" }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const tipId = useId();
@@ -19,8 +12,6 @@ export function FounderBadge({ className = "" }: { className?: string }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    // Registered a tick late so the opening tap doesn't instantly
-    // bubble up and close what it just opened.
     const t = setTimeout(() => window.addEventListener("click", onClose), 0);
     function onClose() {
       setOpen(false);
@@ -62,7 +53,6 @@ export function FounderBadge({ className = "" }: { className?: string }) {
               <stop offset="100%" stopColor="#9c6b0e" />
             </linearGradient>
           </defs>
-          {/* 8-point starburst: two squares, one rotated 45° */}
           <rect x="5.2" y="5.2" width="13.6" height="13.6" rx="1.5" fill="url(#founder-gold)" />
           <rect
             x="5.2"
@@ -73,7 +63,6 @@ export function FounderBadge({ className = "" }: { className?: string }) {
             fill="url(#founder-gold)"
             transform="rotate(45 12 12)"
           />
-          {/* dark core */}
           <circle cx="12" cy="12" r="6.4" fill="#181407" />
           <circle
             cx="12"
@@ -84,7 +73,6 @@ export function FounderBadge({ className = "" }: { className?: string }) {
             strokeOpacity="0.55"
             strokeWidth="0.8"
           />
-          {/* check */}
           <path
             d="M8.8 12.3l2.3 2.3 4.2-4.8"
             fill="none"

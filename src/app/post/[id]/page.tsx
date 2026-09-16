@@ -38,7 +38,6 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
       ? Object.values(likeMap).filter(Boolean).length
       : 0;
   let liked = myLike != null;
-  // Legacy union for exactness on pre-map rows.
   const legacyLikes = await queryCollection("likes", {
     orderBy: "postId",
     equalTo: id,

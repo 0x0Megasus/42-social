@@ -1,9 +1,6 @@
 import { createHash } from "crypto";
 import { publicIdFromUrl } from "@/lib/cloudinary";
 
-// Server-side Cloudinary Admin (destroy only). Needs CLOUDINARY_API_KEY +
-// CLOUDINARY_API_SECRET + NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME. All calls are
-// best-effort — media cleanup must never fail the RTDB write it follows.
 
 function credentials(): {
   cloud: string;
@@ -18,14 +15,11 @@ function credentials(): {
 }
 
 function signature(publicId: string, timestamp: number, secret: string): string {
-  // Admin destroy signature: sha1("public_id=…&timestamp=…{secret}").
   return createHash("sha1")
     .update(`public_id=${publicId}&timestamp=${timestamp}${secret}`)
     .digest("hex");
 }
 
-// Destroy assets by public_id (plus URL fallback). resource can be
-// "image" or "video" (audio lives under video in Cloudinary).
 export async function destroyAssets(
   ids: (string | null | undefined)[]
 ): Promise<void> {
@@ -55,19 +49,15 @@ export async function destroyAssets(
             const d = (await res.json().catch(() => ({}))) as {
               result?: string;
             };
-            // "ok" or "not found" both mean gone; "not found" under the
-            // wrong resource type just falls through to the other.
             if (d.result === "ok" || d.result === "not found") return;
           }
         } catch {
-          /* try other resource type, then give up quietly */
         }
       }
     })
   );
 }
 
-// Convenience: destroy whatever Cloudinary assets delivery URLs point at.
 export async function destroyUrls(
   urls: (string | null | undefined)[]
 ): Promise<void> {

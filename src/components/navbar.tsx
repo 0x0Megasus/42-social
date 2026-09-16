@@ -25,7 +25,6 @@ export function Navbar() {
   const firstBadge = useRef(true);
 
   useEffect(() => {
-    // browsers gate audio behind a gesture — unlock on first interaction
     const unlock = () => unlockAudio();
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
@@ -69,7 +68,6 @@ export function Navbar() {
         }
         firstBadge.current = false;
       } catch {
-        /* offline: keep old badges */
       }
     };
     loadBadges();
@@ -170,8 +168,6 @@ export function Navbar() {
                 href="/api/auth/logout"
                 aria-label="Log out"
                 onClick={() => {
-                  // Clear the Firebase session too (the server only clears
-                  // our cookie) so the next login starts clean.
                   void import("@/lib/firebase-client").then((m) =>
                     m.signOutFirebase().catch(() => null)
                   );

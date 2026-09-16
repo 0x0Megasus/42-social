@@ -9,11 +9,6 @@ function fmt(t: number): string {
   return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 }
 
-// Custom video player in the app's dark language: poster until first play,
-// tap-to-toggle, seek bar, time, mute, fullscreen. `suspended` pauses
-// playback from outside (e.g. comments opened on the same post). `aspect`
-// ("W / H" from the stored upload dims) reserves the frame before metadata
-// loads so the feed never jumps; the video itself always keeps its ratio.
 export function VideoPlayer({
   src,
   poster,
@@ -33,8 +28,6 @@ export function VideoPlayer({
   const [muted, setMuted] = useState(false);
   const [started, setStarted] = useState(false);
   const [hover, setHover] = useState(false);
-  // Touch devices have no hover — controls stay put there; on hover-capable
-  // devices they fade out while playing once the cursor leaves.
   const [hoverable] = useState(
     () =>
       typeof window !== "undefined" &&

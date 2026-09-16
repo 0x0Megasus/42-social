@@ -21,8 +21,6 @@ describe("media helpers", () => {
   });
 
   it("caps fit the free-tier budget", () => {
-    // A max-length voice note must stay small enough to be irrelevant
-    // next to the 1 GB/day download quota.
     const worstVoiceBytes = (MEDIA_CAPS.voiceMaxSeconds * MEDIA_CAPS.voiceBitrate) / 8;
     expect(worstVoiceBytes).toBeLessThan(1024 * 1024);
     expect(MEDIA_CAPS.videoMaxSeconds).toBeLessThanOrEqual(60);

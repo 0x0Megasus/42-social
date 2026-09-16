@@ -34,13 +34,11 @@ export default async function Profile({
   const { login } = await params;
   const handle = decodeURIComponent(login).replace(/^@/, "");
   const session = await getSession();
-  // O(1) handle resolution (login42 / name / id pointers, legacy fallback).
   const userId = await resolveUserId(handle);
   if (!userId) notFound();
   const user = await cachedUserById(userId);
   if (!user) notFound();
   const pub = userPublic(user);
-  // Latest 30 posts via indexed author query + shared enrichment.
   const mine = await queryCollection("posts", {
     orderBy: "authorId",
     equalTo: user.id,
@@ -56,7 +54,6 @@ export default async function Profile({
     getRecords(user.id),
     session ? cachedUserById(session.sub) : Promise.resolve(null),
   ]);
-  // Patch enriched authors to the full public profile (avatar/campus).
   for (const p of posts) p.author = { ...pub, isSupport: pub.isSupport ?? null };
   const myFollowing: string[] = session
     ? await followingIdsOf(session.sub).catch(() => [])

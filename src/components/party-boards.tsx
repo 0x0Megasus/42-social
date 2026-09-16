@@ -10,7 +10,6 @@ import {
   type TwentyBoard,
 } from "@/lib/games/twentyone";
 
-// ---------- Rock-Paper-Scissors ----------
 const RPS_CHOICES: RPSPick[] = ["rock", "paper", "scissors"];
 
 export function RPSBoardView({
@@ -74,7 +73,6 @@ export function RPSBoardView({
   );
 }
 
-// ---------- Number Duel ----------
 export function NumberBoardView({
   board,
   interactive,
@@ -140,7 +138,6 @@ export function NumberBoardView({
   );
 }
 
-// ---------- 21 Duel ----------
 export function TwentyOneBoardView({
   board,
   meId,

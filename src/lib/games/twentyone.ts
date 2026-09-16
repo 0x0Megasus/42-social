@@ -1,4 +1,3 @@
-// Pure 21 Duel engine (blackjack-lite). Card values: 2-10, face = 10, ace = 11/1.
 export type TwentyBoard = {
   deck: number[];
   hands: Record<string, number[]>;

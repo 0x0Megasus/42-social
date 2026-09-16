@@ -1,6 +1,5 @@
 import { PostCardSkeleton } from "@/components/skeletons";
 
-// Mirrors Feed: Composer card (textarea + action row) → sort pills → posts.
 export default function Loading() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading feed">

@@ -1,6 +1,5 @@
 "use client";
 
-// Firebase (Google provider) client — lazy so first paint stays fast.
 let app: unknown | null = null;
 
 export async function getFirebaseApp() {
@@ -29,10 +28,6 @@ export async function signInWithGoogle(): Promise<string> {
     await import("firebase/auth"),
   ];
   const auth = getAuth(fbApp as never);
-  // Always start from a clean Firebase state: after an app-level logout
-  // the Firebase user stays signed in (IndexedDB), and reusing that stale
-  // session makes the next popup misbehave (instant-close / cancelled).
-  // Signing out first forces a real account chooser every attempt.
   await signOut(auth).catch(() => null);
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
@@ -40,14 +35,11 @@ export async function signInWithGoogle(): Promise<string> {
   return cred.user.getIdToken();
 }
 
-// Best-effort Firebase sign-out (call on app logout so no stale Google
-// session lingers for the next login attempt).
 export async function signOutFirebase(): Promise<void> {
   try {
     const fbApp = (await getFirebaseApp()) as never;
     const { getAuth, signOut } = await import("firebase/auth");
     await signOut(getAuth(fbApp as never)).catch(() => null);
   } catch {
-    /* Firebase unavailable — app session logout already happened server-side */
   }
 }

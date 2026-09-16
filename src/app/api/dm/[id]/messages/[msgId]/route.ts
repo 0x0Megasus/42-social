@@ -27,8 +27,6 @@ async function ownMessage(
   const convos = await readCollection("conversations");
   const convo = convos.find((c) => c.id === convoId);
   if (!convo || (convo.aId !== me && convo.bId !== me)) return null;
-  // Indexed id lookup + direct write (see comments/[id] for why this is
-  // read-verify-write instead of a leaf transaction).
   const hits = await queryCollectionEntries("messages", {
     orderBy: "id",
     equalTo: msgId,
@@ -44,7 +42,6 @@ async function ownMessage(
   return { ...next, mine: true };
 }
 
-// PATCH -> edit own message. Peer sees `edited: true`.
 export async function PATCH(req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -69,8 +66,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json({ message: msg });
 }
 
-// DELETE -> tombstone. Peer sees "message deleted" instead of content.
-// Attached voice bytes are reclaimed from the bucket (best-effort).
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)

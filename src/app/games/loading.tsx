@@ -1,4 +1,3 @@
-// Mirrors GamesLobby: title → 6-card grid → join bar.
 export default function Loading() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading arcade">

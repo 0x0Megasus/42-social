@@ -2,17 +2,11 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { WeaponSpec } from './weapons';
 
-/**
- * Builds a first-person viewmodel from a GLB (Quaternius CC0 gun pack).
- * Returns the model group + local-space muzzle point for flashes/tracers.
- */
 export async function buildGLBViewModel(
   _key: string,
   modelData: ArrayBuffer | undefined,
   spec: WeaponSpec,
 ): Promise<{ group: THREE.Group; muzzleLocal: THREE.Vector3 }> {
-  // Fallback: tinted box model close to the old look.
-  // muzzleLocal is in viewmodel-local space (added to the mount offset later).
   if (!modelData) {
     const g = buildFallbackViewModel(spec);
     const tip =
@@ -31,8 +25,6 @@ export async function buildGLBViewModel(
 
   const root = gltf.scene;
 
-  // Quaternius guns are modeled lying along +X (barrel toward +X).
-  // FPS forward is -Z, so yaw +90° to map +X -> -Z.
   root.rotation.set(0, Math.PI / 2, 0);
   root.position.set(0, 0, 0);
   root.scale.setScalar(1);
@@ -41,21 +33,17 @@ export async function buildGLBViewModel(
   let box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
 
-  // Normalize overall length (now along Z after the yaw) per weapon class.
   const targetLen = spec.audio === 'pistol' ? 0.34 : spec.audio === 'smg' ? 0.42 : 0.55;
   const scale = targetLen / Math.max(size.z, 0.001);
   root.scale.setScalar(scale);
   root.updateMatrixWorld(true);
 
-  // Recenter the model on the viewmodel origin so the outer mount
-  // offset (set by WeaponSystem) actually controls on-screen placement.
   box = new THREE.Box3().setFromObject(root);
   const center = box.getCenter(new THREE.Vector3());
   root.position.sub(center);
   root.position.y += 0.02;
   root.updateMatrixWorld(true);
 
-  // Find muzzle: farthest -Z vertex (barrel tip) in viewmodel-local space.
   let muzzle = new THREE.Vector3(0, 0.02, -targetLen / 2);
   let minZ = Infinity;
   const v = new THREE.Vector3();
@@ -75,7 +63,6 @@ export async function buildGLBViewModel(
   muzzle.x = THREE.MathUtils.clamp(muzzle.x, -0.08, 0.08);
   muzzle.y = THREE.MathUtils.clamp(muzzle.y, -0.06, 0.1);
 
-  // Dark tactical material pass so they read well in dim light
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -91,14 +78,11 @@ export async function buildGLBViewModel(
     }
   });
 
-  // Wrap so WeaponSystem can move/rotate the outer mount without
-  // clobbering the normalized centering stored on the inner model.
   const outer = new THREE.Group();
   outer.add(root);
   return { group: outer, muzzleLocal: muzzle };
 }
 
-/** Procedural fallback gun (previous box look) if GLB missing. */
 function buildFallbackViewModel(spec: WeaponSpec): THREE.Group {
   const g = new THREE.Group();
   const dark = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.55, metalness: 0.65 });

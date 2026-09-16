@@ -24,7 +24,6 @@ function normalizeUrl(url: string): string | null {
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;
     return u.toString();
   } catch {
-    // try adding https://
     try {
       const u2 = new URL(`https://${trimmed}`);
       return u2.toString();
@@ -49,19 +48,12 @@ function normalizeSocials(input: unknown): { label: string; url: string }[] {
     const norm = normalizeUrl(rawUrl);
     if (!norm) continue;
     seen.add(lower);
-    // canonical label is lower case as in ALLOWED_LABELS
     out.push({ label: lower, url: norm });
     if (out.length >= 4) break;
   }
   return out;
 }
 
-// PATCH /api/profile { name, bio, socials, cover?, spotifyUrl? } — edit your
-// own nickname + bio + socials + cover banner + favorite song/artist.
-// cover: undefined = untouched, "" = remove, otherwise a direct https image
-// link or a Pinterest pin link (resolved server-side via og:image).
-// spotifyUrl: undefined = untouched, "" = remove, otherwise a Spotify
-// track/artist link or URI (resolved server-side; 400 when it isn't one).
 export async function PATCH(req: Request) {
   const session = await getSession();
   if (!session)
@@ -121,9 +113,6 @@ export async function PATCH(req: Request) {
       : null),
     ...(spotify !== undefined ? { spotify } : null),
   };
-  // Dual-write: by-id map (O(1) reads) + legacy array leaf, addressed by
-  // the real storage key (compacted findIndex is wrong once null holes
-  // from deletes exist — see collectionEntries).
   await writeUserById(session.sub, next).catch(() => null);
   const entries = await readCollectionEntries("users");
   const hit = entries.find(({ row }) => row.id === session.sub);

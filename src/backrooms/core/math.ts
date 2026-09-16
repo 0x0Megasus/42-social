@@ -5,7 +5,6 @@ export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
 
 export const smoothstep = (t: number): number => t * t * (3 - 2 * t);
 
-/** Frame-rate independent damping (exponential smoothing). */
 export const damp = (a: number, b: number, lambda: number, dt: number): number =>
   lerp(a, b, 1 - Math.exp(-lambda * dt));
 

@@ -62,8 +62,6 @@ import type {
   RunResult,
 } from "@/lib/games/types";
 
-// Game rooms live under /games/{code} with per-room transactions —
-// isolated from the social root so gameplay never contends with the feed.
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 function newCode(): string {
@@ -102,8 +100,6 @@ function freshBoard(kind: GameKind, hostId = "", guestId = ""): AnyBoard {
   }
 }
 
-// Boards are stored as flat strings ("X..O....." / 42-char row-major)
-// because RTDB strips nulls inside arrays, collapsing ["X",null×8] to ["X"].
 const EMPTY_CELL = ".";
 
 function encodeBoard(kind: GameKind, board: TTTBoard | C4Board): string {
@@ -119,8 +115,6 @@ function encodeBoard(kind: GameKind, board: TTTBoard | C4Board): string {
 }
 
 function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board | object {
-  // Object boards (no nulls inside) pass through — per-kind defaults are
-  // restored by normalizeRoom below. TTT/C4 use string encoding (null-safe).
   if (
     kind === "rps" ||
     kind === "number" ||
@@ -158,7 +152,6 @@ function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board | object 
       for (let c = 0; c < 7; c++)
         grid[r][c] = cell(chars[r * 7 + c], marks) as C4Mark | null;
   } else if (Array.isArray(raw)) {
-    // legacy array shape (may be ragged from null-stripping) — salvage cells
     const rows = raw as unknown[][];
     for (let r = 0; r < 6 && r < rows.length; r++) {
       const row = Array.isArray(rows[r]) ? rows[r] : [];
@@ -169,8 +162,6 @@ function decodeBoard(kind: GameKind, raw: unknown): TTTBoard | C4Board | object 
   return grid;
 }
 
-// RTDB drops empty/nullish nodes. Restore per-kind defaults on every read
-// so engines never see undefined (and legacy array boards self-heal).
 function normalizeRoom(room: GameRoom): GameRoom {
   room.board = decodeBoard(room.kind, room.board);
   if (room.kind === "rps") {
@@ -242,10 +233,6 @@ function toView(room: GameRoom, meId: string): GameView {
     meId === room.hostId ? room.guestId : meId === room.guestId ? room.hostId : null;
   const playing = room.status === "playing";
 
-  // Anti-cheat redaction: hidden state is stripped per viewer.
-  // RPS hides the opponent's pending pick, Number hides the secret,
-  // 21 hides the deck until the game ends, Backrooms hides the opponent's
-  // run result until both duelists have submitted (or the room is over).
   let board: unknown = room.board;
   let yourTurn = !!mark && playing && room.turn === meId;
   let scoresOut = room.scores;
@@ -264,7 +251,6 @@ function toView(room: GameRoom, meId: string): GameView {
     const b = room.board as TwentyBoard;
     board = playing ? { ...b, deck: [] } : b;
   } else if (room.kind === "chess") {
-    // full information game — nothing hidden; turn from the position itself
     try {
       const g = new Chess((room.board as ChessBoard).fen);
       const mineWhite = meId === room.hostId;
@@ -273,8 +259,6 @@ function toView(room: GameRoom, meId: string): GameView {
       yourTurn = false;
     }
   } else if (room.kind === "backrooms") {
-    // No turns — a seat is "active" until it submits its run. The client
-    // boots the maze from board.seed; results reveal when both are in.
     const scores = room.scores ?? {};
     const mine = scores[meId];
     const other =
@@ -324,15 +308,11 @@ function mini(u: {
     : null;
 }
 
-// Profile lookups are O(1) map reads + the shared 30s single-flight cache
-// (skill: server-cache-lru) — never the full root.
 async function cachedProfile(id: string): Promise<MiniProfile | null> {
   const u = await cachedUserById(id).catch(() => null);
   return mini(u);
 }
 
-// Attach public mini-profiles (names/avatars for the board header).
-// Bot seats render a synthetic profile — no DB lookup.
 async function withPlayers(room: GameView): Promise<GameView> {
   const host = isBotId(room.hostId)
     ? botProfile(botKindOf(room.hostId))
@@ -366,7 +346,6 @@ export async function createRoom(
     );
     if (exists.exists()) continue;
     const now = new Date().toISOString();
-    // Backrooms has no bot — vsBot is ignored; mode selects solo/duel.
     const botGuest =
       opts?.vsBot && kind !== "backrooms" ? `bot:${kind}` : null;
     const mode: BackroomsMode | undefined =
@@ -398,7 +377,6 @@ export async function createRoom(
       updatedAt: now,
     };
     if (botGuest) {
-      // Bot games start immediately; 21 deals hands, chess starts its clock.
       normalizeRoom(room);
       startClockIfChess(room);
       runBotIfNeeded(room);
@@ -429,8 +407,6 @@ export async function viewRoom(
   return room ? withPlayers(toView(room, meId)) : null;
 }
 
-// Build a per-viewer room view from a raw RTDB snapshot value — used by the
-// SSE stream so push events don't need an extra GET round-trip per update.
 export async function buildView(
   raw: GameRoom,
   meId: string
@@ -442,8 +418,6 @@ export async function joinRoom(
   code: string,
   meId: string
 ): Promise<{ room?: GameView; error?: "not-found" | "full" }> {
-  // Pre-read: warms the client cache so the transaction updater below
-  // never aborts on a local null-guess (RTDB runs it before server data).
   const existing = await getRoom(code);
   if (!existing) return { error: "not-found" };
   if (
@@ -496,9 +470,6 @@ export type MoveInput = {
   promotion?: string;
 };
 
-// Pure per-kind move application. Shared by human moves AND bot replies so
-// both go through identical validation + win detection. `playerId` may be a
-// bot id. Returns false when the move is illegal (room untouched).
 function applyMoveFor(
   room: GameRoom,
   playerId: string,
@@ -656,18 +627,12 @@ function applyMoveFor(
   return true;
 }
 
-// Seed fresh clocks once a chess room starts.
 function startClockIfChess(room: GameRoom): void {
   if (room.kind !== "chess") return;
   const b = room.board as ChessBoard;
   b.clock = tickChessClock(b.clock ?? null, Date.now(), true);
 }
 
-// While it's the bot's turn inside a bot room, compute + apply its reply
-// atomically in the same transaction. Mutates `room`; returns void.
-// NOTE: only used for instant setup (room creation / rematch when the bot
-// does NOT start). Live replies go through scheduleBotReply() with a
-// human-like delay — see below.
 function runBotIfNeeded(room: GameRoom): void {
   const botIsHost = isBotId(room.hostId);
   const botIsGuest = isBotId(room.guestId);
@@ -679,14 +644,9 @@ function runBotIfNeeded(room: GameRoom): void {
     const input = botInputFor(room.kind, room.board, botId);
     if (!input) break;
     if (!applyMoveFor(room, botId, input)) break;
-    // rps: bot pick alone doesn't flip play — loop exits via the turn check
   }
 }
 
-// Human-like bot pacing: the bot used to reply inside the SAME transaction
-// as the human move (zero latency — felt instant/robotic). Now the human
-// move commits first and the bot answers ~1s later in its own transaction,
-// pushed to the tab via SSE/poll like a real opponent.
 const BOT_REPLY_MIN_MS = 400;
 const BOT_REPLY_JITTER_MS = 200;
 
@@ -716,7 +676,6 @@ async function applyDelayedBotMove(code: string): Promise<void> {
         if (room.status !== "playing") return;
         const firstBot = botToMove(room);
         if (!firstBot) return; // human moved on / game over — abort
-        // Chess: charge the bot for its think time (incl. the delay above).
         if (room.kind === "chess") {
           const b = room.board as ChessBoard;
           const botWhite = firstBot === room.hostId;
@@ -777,12 +736,7 @@ export async function playMove(
       if (room.status !== "playing") return;
       const seated = meId === room.hostId || meId === room.guestId;
       if (!seated) return;
-      // rps is free-play (picks don't touch the other side); everything
-      // else strictly alternates via the turn field
       if (room.kind !== "rps" && room.turn !== meId) return;
-      // Chess clock: charge the mover for the elapsed think time before the
-      // move is applied. Whoever's clock is at 0 loses on time (mover first
-      // — they were the one thinking when their flag fell).
       if (room.kind === "chess") {
         const b = room.board as ChessBoard;
         const moverWhite = meId === room.hostId;
@@ -799,11 +753,7 @@ export async function playMove(
         }
       }
       if (!applyMoveFor(room, meId, input)) return;
-      // Bot reply is NOT applied here anymore: the human move commits first
-      // and the bot answers ~1s later (scheduleBotReply after commit),
-      // so it feels like a real opponent instead of an instant echo.
       room.updatedAt = new Date().toISOString();
-      // re-encode string-boards: RTDB strips nulls inside arrays
       if (room.kind === "tictactoe" || room.kind === "connectfour") {
         room.board = encodeBoard(
           room.kind,
@@ -816,9 +766,6 @@ export async function playMove(
     return { error: "illegal move" };
   const rawRoom = res.snapshot.val() as GameRoom;
   const room = normalizeRoom(rawRoom);
-  // recordResult stalls the winning player's response by a full extra RTDB
-  // round-trip right at the victory moment. after() (Next 16) runs it after
-  // the response is flushed — same guarantees, zero perceived latency.
   if (room.status === "over") {
     after(() => recordResult(room).catch(() => null));
   } else {
@@ -827,11 +774,7 @@ export async function playMove(
   return { room: await withPlayers(toView(room, meId)) };
 }
 
-// ---------------- backrooms: submit-a-run ----------------
 
-// Server-side bounds for a submitted run. Generous ceilings (a perfect
-// escape is ~7.5k + kill bonuses) — the point is rejecting garbage and
-// hand-edited payloads, not policing skill.
 const RUN_BOUNDS = {
   score: 100_000_000,
   kills: 1_000_000,
@@ -867,11 +810,6 @@ export function sanitizeRunResult(input: unknown): RunResult | null {
   };
 }
 
-/**
- * Duel verdict from two submitted runs. Higher score wins; exact score tie
- * breaks on faster clear time; perfect tie is a draw (null). Pure — unit
- * tested in lib/__tests__/backrooms.test.ts.
- */
 export function decideBackroomsWinner(
   hostId: string,
   guestId: string | null,
@@ -886,9 +824,6 @@ export function decideBackroomsWinner(
   return null;
 }
 
-// Submit one FPS run. No turns: any seated player in a playing backrooms
-// room may submit once. Solo settles immediately; duel settles when both
-// seats are in (the pending opponent stays redacted in toView until then).
 export async function submitResult(
   code: string,
   meId: string,
@@ -934,7 +869,6 @@ export async function submitResult(
   return { room: await withPlayers(toView(done, meId)) };
 }
 
-// Forfeit on time (clock hit 0 while you were thinking).
 export async function flagRoom(
   code: string,
   meId: string
@@ -953,7 +887,6 @@ export async function flagRoom(
       const whiteToMove = room.turn === room.hostId;
       b.clock = tickChessClock(b.clock ?? null, Date.now(), whiteToMove);
       if (b.clock.w > 0 && b.clock.b > 0) {
-        // still time on both clocks — nothing to flag
         room.updatedAt = new Date().toISOString();
         return room;
       }
@@ -986,7 +919,6 @@ async function recordResult(room: GameRoom): Promise<void> {
         if (room.winnerId === null) r.d += 1;
         else if (room.winnerId === id) r.w += 1;
         else r.l += 1;
-        // Backrooms tracks a high score alongside w/l/d.
         if (room.kind === "backrooms") {
           const s = room.scores?.[id]?.score;
           if (typeof s === "number") r.best = Math.max(r.best ?? 0, s);
@@ -1018,19 +950,12 @@ export async function rematch(
       room.rematch ??= {};
       room.rematch[meId] = true;
       const other = meId === room.hostId ? room.guestId : room.hostId;
-      // Bot seats never click rematch — a single human ready is enough
-      // to start the next round vs the bot. Solo backrooms rooms have no
-      // opponent at all — one ready is enough there too.
       const otherIsBot = !!other && isBotId(other);
-      // Start a new round when: vs bot (auto-ready) · solo backrooms (no
-      // opponent) · or both humans ready (PvP + backrooms duel).
       const startNow =
         otherIsBot ||
         (room.kind === "backrooms" && !other) ||
         (!!other && !!room.rematch[other]);
       if (startNow) {
-        // both ready — new round; chess swaps colors (White always moves
-        // first), everything else alternates the starter for fairness
         if (room.kind === "chess" && room.guestId) {
           const h = room.hostId;
           room.hostId = room.guestId;
@@ -1051,14 +976,11 @@ export async function rematch(
         room.turn = room.starterId;
         startClockIfChess(room);
         if (room.kind === "backrooms") {
-          // Fresh maze every round (same seed for both duelists), scores wiped.
           const seed = randomInt(2 ** 31);
           room.seed = seed;
           room.board = { seed };
           room.scores = {};
         }
-        // No synchronous bot move here: if the bot starts the new round,
-        // scheduleBotReply() below answers after a human-like delay.
         room.status = "playing";
         room.winnerId = null;
         room.winLine = null;
@@ -1075,9 +997,6 @@ export async function rematch(
   return { room: await withPlayers(toView(done, meId)) };
 }
 
-// Leave = forfeit (winner = the other player). Host leaving an empty
-// waiting room deletes it instead. Leaving a finished game just unlinks
-// it from your list so you can walk away.
 export async function leaveRoom(
   code: string,
   meId: string
@@ -1115,7 +1034,6 @@ export async function leaveRoom(
   if (!res.committed || !res.snapshot.val())
     return { error: "not ready" };
   const done = normalizeRoom(res.snapshot.val() as GameRoom);
-  // See playMove: bookkeeping must never delay the response.
   after(() => recordResult(done).catch(() => null));
   return { room: await withPlayers(toView(done, meId)) };
 }

@@ -7,7 +7,6 @@ import { MUHROW33, buildTextures } from './textures';
 export const SOLID = 1;
 export const FLOOR = 0;
 
-/** Grid-space BFS flow field for zombie navigation. */
 export class FlowField {
   dist: Int16Array;
   w: number;
@@ -19,7 +18,6 @@ export class FlowField {
     this.dist = new Int16Array(w * h);
   }
 
-  /** BFS from goal cell(s). Recompute every ~0.4s or when player changes cell. */
   compute(grid: Uint8Array, gw: number, _gh: number, goalX: number, goalZ: number): void {
     this.dist.fill(-1);
     const w = gw;
@@ -84,7 +82,6 @@ export class Level {
   constructor(renderer: THREE.WebGLRenderer) {
     const tex = buildTextures(MUHROW33);
 
-    // Set repeat per surface — walls tile per 4m cell, floors/ceilings too.
     const cell = CFG.world.cell;
     tex.wallpaper.repeat.set(cell / 4, cell / CFG.world.wallH / 2);
     tex.wallpaperEnd.repeat.set(cell / 4, cell / CFG.world.wallH / 2);
@@ -124,7 +121,6 @@ export class Level {
     const rng = new RNG(seed);
     const grid = new Uint8Array(W * H).fill(SOLID);
 
-    // --- Drunkard's walk carve-out (classic backrooms topology) ---
     const carvers = 3;
     const targetFloor = Math.floor(W * H * 0.42);
     let floorCount = 0;
@@ -137,11 +133,10 @@ export class Level {
         steps++;
         if (x > 1 && x < W - 2 && z > 1 && z < H - 2) {
           const i = z * W + x;
-          if (grid[i] === SOLID) {
-            grid[i] = FLOOR;
-            floorCount++;
-            // occasionally carve a 2-wide corridor
-            if (rng.chance(0.25)) {
+            if (grid[i] === SOLID) {
+              grid[i] = FLOOR;
+              floorCount++;
+              if (rng.chance(0.25)) {
               const wi = z * W + Math.min(W - 2, x + 1);
               if (grid[wi] === SOLID) {
                 grid[wi] = FLOOR;
@@ -150,9 +145,7 @@ export class Level {
             }
           }
         }
-        // turn sometimes
         if (rng.chance(0.28)) dir = (dir + rng.int(1, 3)) & 3;
-        // bias to continue straight
         x += dir === 0 ? 1 : dir === 1 ? -1 : 0;
         z += dir === 2 ? 1 : dir === 3 ? -1 : 0;
         if (x <= 1 || x >= W - 2 || z <= 1 || z >= H - 2) {
@@ -163,7 +156,6 @@ export class Level {
       }
     }
 
-    // --- Open some "rooms" — clear rectangular areas ---
     for (let r = 0; r < 5; r++) {
       const rw = rng.int(4, 8);
       const rh = rng.int(4, 8);
@@ -180,7 +172,6 @@ export class Level {
       }
     }
 
-    // Reconnect isolated floor regions with simple flood-fill relink
     const label = new Int32Array(W * H).fill(-1);
     let regions = 0;
     const regionCells: { x: number; z: number }[][] = [];
@@ -209,7 +200,6 @@ export class Level {
         regions++;
       }
     }
-    // Connect each region to region 0 with an L-corridor
     for (let r = 1; r < regions; r++) {
       const a = regionCells[r][0];
       const b = regionCells[0][0];
@@ -227,7 +217,6 @@ export class Level {
       }
     }
 
-    // --- Pick spawn / escape cells far apart ---
     const floors: { x: number; z: number }[] = [];
     for (let z = 0; z < H; z++) {
       for (let x = 0; x < W; x++) {
@@ -237,13 +226,11 @@ export class Level {
     rng.shuffle(floors);
     const spawnCell = floors[0];
     let escapeCell = floors[floors.length - 1];
-    // ensure escape is reasonably far
     for (const f of floors) {
       const d = Math.abs(f.x - spawnCell.x) + Math.abs(f.z - spawnCell.z);
       const de = Math.abs(escapeCell.x - spawnCell.x) + Math.abs(escapeCell.z - spawnCell.z);
       if (d > de) escapeCell = f;
     }
-    // end cell = midpoint region (activate end-room wallpaper there)
     let endCell = floors[Math.floor(floors.length / 2)];
     let bestD = Infinity;
     const midX = (spawnCell.x + escapeCell.x) / 2;
@@ -272,7 +259,6 @@ export class Level {
     this.buildLights(grid, W, H, rng, spawnCell);
   }
 
-  /** Merge static geometry into a handful of draw calls. */
   private buildMeshes(grid: Uint8Array, W: number, H: number, escapeCell: { x: number; z: number }, endCell: { x: number; z: number }): void {
     const cell = CFG.world.cell;
     const wallH = CFG.world.wallH;
@@ -302,7 +288,6 @@ export class Level {
           cg.translate(wx + cell / 2, CFG.world.ceilH, wz + cell / 2);
           ceilGeos.push(cg);
         } else {
-          // Wall block — only add faces adjacent to floor (face culling)
           const isEnd = inRange(x, z, endCell, 2);
           const g = new THREE.BoxGeometry(cell, wallH, cell);
           g.translate(wx + cell / 2, wallH / 2, wz + cell / 2);
@@ -329,7 +314,6 @@ export class Level {
     const ceilMesh = merge(ceilGeos);
     if (ceilMesh) this.group.add(new THREE.Mesh(ceilMesh, this.matCeil));
 
-    // Escape hatch marker — a dark doorway frame on the escape cell
     const ex = escapeCell.x * cell + cell / 2;
     const ez = escapeCell.z * cell + cell / 2;
     const frame = new THREE.Mesh(
@@ -340,7 +324,6 @@ export class Level {
     frame.name = 'escapeFrame';
     this.group.add(frame);
 
-    // subtle green glow so players can find it
     const glow = new THREE.Mesh(
       new THREE.PlaneGeometry(cell * 0.6, wallH * 0.7),
       new THREE.MeshBasicMaterial({ color: 0x1b3a1b, transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
@@ -350,7 +333,6 @@ export class Level {
     this.group.add(glow);
   }
 
-  /** Fluorescent lamp fixtures: instanced panels + a few real PointLights near spawn/escape. */
   private buildLights(grid: Uint8Array, W: number, H: number, rng: RNG, spawnCell: { x: number; z: number }): void {
     const cell = CFG.world.cell;
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
@@ -360,7 +342,6 @@ export class Level {
     for (let z = 1; z < H - 1; z++) {
       for (let x = 1; x < W - 1; x++) {
         if (grid[z * W + x] !== FLOOR) continue;
-        // lamps on a loose grid, some missing (dark zones!)
         if (x % 3 === 0 && z % 3 === 0 && rng.chance(0.82)) {
           positions.push({ x, z });
         }
@@ -386,7 +367,6 @@ export class Level {
     frames.instanceMatrix.needsUpdate = true;
     this.group.add(panels, frames);
 
-    // A handful of REAL point lights near spawn for depth; the rest is ambient fake.
     const near = this.data.lampPositions
       .filter((p) => Math.hypot(p.x - (spawnCell.x * cell + cell / 2), p.z - (spawnCell.z * cell + cell / 2)) < 30)
       .sort(() => rng.next())
@@ -399,7 +379,6 @@ export class Level {
     }
   }
 
-  /** Refresh the zombie flow field toward the player's cell. */
   updateFlow(playerPos: THREE.Vector3): void {
     const cell = this.data.cell;
     const cx = Math.floor(playerPos.x / cell);
@@ -421,7 +400,6 @@ export class Level {
 export type AABB = { minX: number; minZ: number; maxX: number; maxZ: number };
 export type AABBList = AABB[];
 
-/** Merge solid cells into row-run AABBs for fast, simple collision. */
 export function buildCollision(grid: Uint8Array, W: number, H: number, cell: number): AABBList {
   const boxes: AABBList = [];
   const used = new Uint8Array(W * H);
@@ -429,10 +407,8 @@ export function buildCollision(grid: Uint8Array, W: number, H: number, cell: num
     for (let x = 0; x < W; x++) {
       const i = z * W + x;
       if (grid[i] !== SOLID || used[i]) continue;
-      // extend run in +x
       let x2 = x;
       while (x2 + 1 < W && grid[z * W + (x2 + 1)] === SOLID && !used[z * W + (x2 + 1)]) x2++;
-      // extend run in +z (rectangle)
       let z2 = z;
       outer: while (z2 + 1 < H) {
         for (let xx = x; xx <= x2; xx++) {
@@ -454,7 +430,6 @@ export function buildCollision(grid: Uint8Array, W: number, H: number, cell: num
   return boxes;
 }
 
-/** Circle-vs-AABBList sliding resolution on XZ plane. Mutates pos. */
 export function resolveCollision(
   pos: THREE.Vector3,
   radius: number,
@@ -473,7 +448,6 @@ export function resolveCollision(
         pos.x += dx * push;
         pos.z += dz * push;
       } else {
-        // center inside box — push out along smallest axis
         const left = pos.x - b.minX;
         const right = b.maxX - pos.x;
         const top = pos.z - b.minZ;

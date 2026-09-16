@@ -3,8 +3,6 @@
 import { Bold, Italic, Code } from "lucide-react";
 import { takeGraphemes } from "@/lib/sanitize";
 
-// Wraps the current selection (or cursor) with a markdown marker.
-// Works on controlled inputs: caller owns value + setter via props below.
 export function wrapSelection(
   el: HTMLInputElement | HTMLTextAreaElement | null,
   value: string,
@@ -17,7 +15,6 @@ export function wrapSelection(
   const before = value.slice(0, s);
   const sel = value.slice(s, e);
   const after = value.slice(e);
-  // grapheme-safe: never split surrogate pairs or ZWJ emoji in half
   const next = takeGraphemes(
     sel ? `${before}${marker}${sel}${marker}${after}` : `${before}${marker}${marker}${after}`,
     max
@@ -32,7 +29,6 @@ export function wrapSelection(
     try {
       el.setSelectionRange(pos, pos);
     } catch {
-      /* hidden input */
     }
   });
 }

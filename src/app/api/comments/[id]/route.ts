@@ -16,12 +16,6 @@ async function ownComment(
   me: string,
   mutate: (c: { body: string; edited: boolean; deleted: boolean }) => void
 ) {
-  // Indexed id lookup (no collection scan), then a direct write.
-  // NOTE: not a transaction — firebase-admin runs the tx updater against
-  // the LOCAL guess (null) first, so "abort when absent" never reaches the
-  // server. Read-verify-write is safe here: only the owner can mutate
-  // their own rows, so concurrent writers are always the same user and
-  // last-writer-wins is correct.
   const hits = await queryCollectionEntries("comments", {
     orderBy: "id",
     equalTo: commentId,
@@ -42,7 +36,6 @@ async function ownComment(
   };
 }
 
-// PATCH /api/comments/[id] { body } — edit own comment. Readers see "edited".
 export async function PATCH(req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -68,7 +61,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json(result);
 }
 
-// DELETE /api/comments/[id] — tombstone. Readers see "comment deleted".
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)

@@ -1,9 +1,5 @@
 import type { User } from "@/lib/db";
 
-// Owner/support allowlist. Set SUPPORT_IDENTIFIERS as a comma-separated
-// list — each entry can be an email, a 42 login, or a user id, matched
-// case-insensitively. Empty = nobody (fail closed).
-// Example: SUPPORT_IDENTIFIERS="owner@gmail.com, omeg4sus"
 
 export function supportIdentifiers(): string[] {
   return (process.env.SUPPORT_IDENTIFIERS ?? "")

@@ -1,6 +1,3 @@
-// Opponent bots for every game kind. A bot is a synthetic guest user
-// ("bot:tictactoe") occupying the guest seat; its reply is computed inside
-// the same RTDB transaction as the human's move — zero extra latency.
 import { randomInt } from "node:crypto";
 import { Chess } from "chess.js";
 import {
@@ -19,8 +16,6 @@ import { handValue, type TwentyBoard } from "./twentyone";
 import type { ChessBoard } from "./chess";
 import type { RPSPick } from "./rps";
 
-// Mirrors games-store's MoveInput (kept local so bot.ts never imports the
-// server store — games-store imports bot, not the other way around).
 export type BotInput = {
   cell?: number;
   col?: number;
@@ -60,9 +55,6 @@ export function botProfile(kind: string): {
 
 const RPS_PICKS: RPSPick[] = ["rock", "paper", "scissors"];
 
-// Compute the bot's next move from the current board. Runs server-side only
-// (inside playMove's transaction), so it may read hidden state like the
-// Number Duel secret — the bot is meant to be a strong casual opponent.
 export function botInputFor(
   kind: string,
   board: unknown,
@@ -99,7 +91,6 @@ export function botInputFor(
         probe[row][col] = mark;
         return probe;
       };
-      // 1) win now, 2) block their win, 3) center-first preference
       for (const col of [0, 1, 2, 3, 4, 5, 6]) {
         const probe = drop(col, me);
         if (probe && c4Winner(probe)) return { col };
@@ -119,7 +110,6 @@ export function botInputFor(
       return { pick: RPS_PICKS[randomInt(RPS_PICKS.length)] };
     case "number": {
       const b = board as NumberBoard;
-      // Binary search against the real secret (server-side knowledge).
       const below = b.guesses
         .filter((g) => g.n < b.secret)
         .map((g) => g.n);
@@ -146,7 +136,6 @@ export function botInputFor(
       }
       const moves = game.moves({ verbose: true });
       if (moves.length === 0) return null;
-      // 1) checkmate now, 2) best capture, 3) random legal move
       for (const m of moves) {
         game.move(m);
         const mate = game.isCheckmate();

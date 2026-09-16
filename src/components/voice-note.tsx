@@ -19,9 +19,6 @@ export type VoiceClip = {
   mime: string;
 };
 
-// Hold-to-record voice note (pointer down/up) with live level meter,
-// 3-minute cap, and send/cancel preview. Opus-first via MediaRecorder,
-// Safari falls back to MP4/AAC automatically.
 export function VoiceRecorder({
   disabled,
   onReady,
@@ -46,7 +43,6 @@ export function VoiceRecorder({
   } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Tell the parent when a preview is up so it can give it the full row.
   useEffect(() => {
     onPreviewing?.(preview !== null);
   }, [preview, onPreviewing]);
@@ -60,12 +56,10 @@ export function VoiceRecorder({
     try {
       s.recorder.stream.getTracks().forEach((t) => t.stop());
     } catch {
-      /* already stopped */
     }
     try {
       s.stream.getTracks().forEach((t) => t.stop());
     } catch {
-      /* already stopped */
     }
     void s.audioCtx?.close().catch(() => null);
   }
@@ -158,7 +152,6 @@ export function VoiceRecorder({
           stateRef.current.analyser = analyser;
         }
       } catch {
-        /* meter optional */
       }
       recorder.start(250);
       setRecording(true);
@@ -275,9 +268,6 @@ export function VoiceRecorder({
   );
 }
 
-// Waveform player for received voice notes (custom UI over <audio>).
-// Only one voice note plays at a time app-wide: starting one broadcasts
-// a `voice-play` event carrying its id, and every other instance pauses.
 let voiceSeq = 0;
 
 export function VoicePlayer({

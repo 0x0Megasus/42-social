@@ -1,4 +1,3 @@
-// Mirrors GameRoom's loading state: status header + board square.
 export default function Loading() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading game">

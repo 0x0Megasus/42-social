@@ -6,10 +6,6 @@ import {
   updatePaths,
 } from "@/lib/db";
 
-// POST /api/media/complete { publicId, url, bytes, kind } -> { ok }
-// Called right after a successful upload: books the bytes against the
-// daily quota and clears the pending marker. The public_id must live
-// under the caller's own prefix (the upload preset locks the folder too).
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session)

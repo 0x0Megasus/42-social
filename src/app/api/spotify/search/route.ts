@@ -3,11 +3,6 @@ import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { searchSpotify } from "@/lib/spotify";
 
-// GET /api/spotify/search?q= -> { results } | 503
-// In-app song/artist search (Web API Client Credentials flow). Needs
-// SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET in env — without them (or when
-// Spotify is unreachable) it answers 503 `search-unavailable` and the UI
-// falls back to paste-a-link, which needs no keys at all.
 export async function GET(req: Request) {
   const session = await getSession();
   if (!session)

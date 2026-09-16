@@ -1,10 +1,5 @@
 import { getRtdb, rtdb } from "@/lib/fbrdb";
 
-// Presence, serverless-safe: heartbeats live in RTDB (/presence/{uid} = ms),
-// NOT in process memory (serverless instances don't share memory).
-// Online = heartbeat within ONLINE_WINDOW. Correct offline handling:
-// client beacons /api/presence/offline on last-tab close (pagehide),
-// and any stale entry expires by WINDOW anyway.
 
 export const ONLINE_WINDOW_MS = 75_000;
 const REF = "/presence";
@@ -32,7 +27,6 @@ export async function beatsFor(ids: string[]): Promise<Map<string, number>> {
     const at = val[id];
     if (typeof at === "number") out.set(id, at);
   }
-  // best-effort prune of ancient entries (don't await callers on it)
   void prune(val).catch(() => null);
   return out;
 }

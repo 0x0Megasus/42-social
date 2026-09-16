@@ -1,16 +1,3 @@
-// Shared loading skeletons (skills: tailwind-design-system, anti-ui-slop,
-// wcag-audit-patterns, vercel-react-best-practices rendering-*).
-//
-// Rules:
-// - Exactly ONE chat skeleton (ChatSkeleton) for every conversational surface:
-//   post comments, DM thread, DM page loader. No duplicated pulse arrays.
-// - Every route loader mirrors its real layout row-for-row so content never
-//   jumps when data arrives (same padding, gaps, radii, avatar sizes).
-// - All pulses use `motion-safe:animate-pulse` + static zinc fills so
-//   `prefers-reduced-motion` shows a calm placeholder instead of flashing.
-// - Wrappers carry `role="status"` + `aria-label`; inner shapes are
-//   `aria-hidden` so screen readers hear one "Loading …" announcement.
-
 import { cn } from "@/lib/utils";
 
 function Pulse({ className = "" }: { className?: string }) {
@@ -41,9 +28,6 @@ function Status({
   );
 }
 
-// THE one chat skeleton — avatar 32 + name/time + bubble lines.
-// Matches the comment row (`flex gap-2.5 p-3`) and the DM row
-// (`flex gap-3 px-4 pt-2`) via the `density` prop, not a second component.
 export function ChatSkeleton({
   rows = 3,
   label = "Loading messages",
@@ -89,8 +73,6 @@ export function ChatSkeleton({
   );
 }
 
-// Post card mirror: header (avatar 40 + 2 lines + menu dot) + body lines +
-// action pills. Used by the home feed loader.
 export function PostCardSkeleton() {
   return (
     <div
@@ -117,8 +99,6 @@ export function PostCardSkeleton() {
   );
 }
 
-// Inbox row mirror: avatar 40 + name/preview + time/unread column.
-// Matches DmList's `flex items-center gap-3 p-3` rows exactly.
 export function DmRowSkeleton({ count = 3 }: { count?: number }) {
   return (
     <>
@@ -143,8 +123,6 @@ export function DmRowSkeleton({ count = 3 }: { count?: number }) {
   );
 }
 
-// Person row mirror: avatar 40 + name/handle + two action buttons.
-// Matches ExploreClient rows.
 export function PersonRowSkeleton({ count = 4 }: { count?: number }) {
   return (
     <>
@@ -169,7 +147,6 @@ export function PersonRowSkeleton({ count = 4 }: { count?: number }) {
   );
 }
 
-// Notification row mirror: avatar 36 + two text lines + unread dot slot.
 export function NotificationRowSkeleton({ count = 4 }: { count?: number }) {
   return (
     <>

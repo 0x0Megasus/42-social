@@ -4,10 +4,6 @@ import { useCallback, useState } from "react";
 import { PostCard, type FeedPost } from "@/components/post-card";
 import { PostFocusModal } from "@/components/post-focus-modal";
 
-// Feed/profile list: a comment click isolates the post + thread in a focus
-// popup instead of expanding inline. The popup tracks the live feed item,
-// so likes/edits stay in sync — and if the post leaves the feed (deleted),
-// the popup closes with it.
 export function PostList({
   posts,
   onUpdate,

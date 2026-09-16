@@ -5,8 +5,6 @@ import {
   type User,
 } from "@/lib/db";
 
-// Follow graph reads: keyed maps first, legacy array union for pre-map
-// rows. Sets stay exact during and after the migration.
 
 async function mapKeys(path: string): Promise<Set<string>> {
   const val = await readPath<Record<string, unknown>>(path).catch(() => null);
@@ -18,7 +16,6 @@ async function mapKeys(path: string): Promise<Set<string>> {
   );
 }
 
-/** Ids this user follows (for feed affinity + explore ticks). */
 export async function followingIdsOf(meId: string): Promise<string[]> {
   const [map, legacy] = await Promise.all([
     mapKeys(`/follows-by-follower/${meId}`),
@@ -32,7 +29,6 @@ export async function followingIdsOf(meId: string): Promise<string[]> {
   return [...map];
 }
 
-/** Ids following this user. */
 export async function followerIdsOf(userId: string): Promise<string[]> {
   const [map, legacy] = await Promise.all([
     mapKeys(`/follows-by-following/${userId}`),
@@ -62,7 +58,6 @@ function lite(u: User): FollowUserLite {
   };
 }
 
-/** Follower/following user cards for the profile modal (capped). */
 export async function followListsOf(
   userId: string,
   cap = 200

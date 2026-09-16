@@ -15,8 +15,6 @@ const GLYPHS: Record<string, Record<string, string>> = {
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-// Real-wood palette (chess.com walnut/maple): warm, photographic, tactile.
-// Frame uses layered gradients to read as varnished timber, not flat color.
 const LIGHT = "bg-[#f0d9b5]";
 const DARK = "bg-[#b58863]";
 const SELECT_RING = "ring-[#ffd54a]";
@@ -40,9 +38,6 @@ function ClockChip({
   liveClock: { w: number; b: number } | null;
   active: boolean;
 }) {
-  // Always rendered (placeholder when the clock isn't seeded yet) so the
-  // player bars keep a stable height — mounting/unmounting the chip
-  // resizes the bars and makes the whole board jump.
   if (!liveClock) {
     return (
       <span
@@ -74,7 +69,6 @@ function ClockChip({
 }
 
 function capturedBy(fen: string, by: "w" | "b"): string[] {
-  // pieces OF the opponent captured BY `by`
   const start: Record<string, number> = { p: 8, n: 2, b: 2, r: 2, q: 1 };
   const alive: Record<string, number> = { p: 0, n: 0, b: 0, r: 0, q: 0 };
   try {
@@ -122,7 +116,6 @@ export function ChessBoardView({
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
   const prevFen = useRef(board.fen);
 
-  // Live clock: derive from the last server tick and re-render on an interval.
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     if (!clock || board.history.length === 0) return;
@@ -139,7 +132,6 @@ export function ChessBoardView({
     return { w, b };
   }, [clock, game, nowTick]);
 
-  // Flag fall: call onFlag once when my (or anyone's) clock visually hits 0.
   const flaggedRef = useRef(false);
   useEffect(() => {
     if (!liveClock || !onFlag || flaggedRef.current) return;
@@ -154,7 +146,6 @@ export function ChessBoardView({
     setPromo(null);
   }, [board.fen]);
 
-  // turn flipped away mid-select (poll update) — drop stale dots
   useEffect(() => {
     if (!interactive) {
       setSelected(null);
@@ -162,7 +153,6 @@ export function ChessBoardView({
     }
   }, [interactive]);
 
-  // capture + check jingles on incoming positions
   useEffect(() => {
     if (prevFen.current === board.fen) return;
     try {
@@ -173,7 +163,6 @@ export function ChessBoardView({
       if (countPieces(after) < countPieces(before)) playCapture();
       if (after.isCheck()) playCheck();
     } catch {
-      /* ignore */
     }
     prevFen.current = board.fen;
   }, [board.fen]);
@@ -189,7 +178,6 @@ export function ChessBoardView({
         });
       }
     } catch {
-      /* ignore */
     }
     return m;
   }, [game, selected]);
@@ -262,7 +250,6 @@ export function ChessBoardView({
             if (sq && sq.color === color && sq.type !== "k") s += values[sq.type];
           }
       } catch {
-        /* ignore */
       }
       return s;
     };
@@ -282,7 +269,6 @@ export function ChessBoardView({
 
   return (
     <div className="space-y-2">
-      {/* opponent: clock + captured tray + material */}
       <div className="flex items-center gap-2 rounded-xl bg-black/50 px-2.5 py-1.5 ring-1 ring-white/10 backdrop-blur">
         <ClockChip
           side={oppSide}
@@ -306,7 +292,6 @@ export function ChessBoardView({
         </div>
       </div>
 
-      {/* timber frame + board */}
       <div className="rounded-2xl bg-gradient-to-br from-[#6b4f35] via-[#4a3525] to-[#2b1f14] p-2 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-2px_6px_rgba(0,0,0,0.5)] ring-1 ring-black/60 sm:p-2.5">
       <div className="relative overflow-hidden rounded-lg shadow-[inset_0_2px_12px_rgba(0,0,0,0.45)] ring-1 ring-black/70">
         <div
@@ -346,7 +331,6 @@ export function ChessBoardView({
                     isSel && `z-10 ring-4 ring-inset ${SELECT_RING}`
                   )}
                 >
-                  {/* wood sheen per square */}
                   <span
                     aria-hidden
                     className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/14 via-transparent to-black/12"
@@ -416,7 +400,6 @@ export function ChessBoardView({
             })
           )}
         </div>
-        {/* vignette: felt depth over the whole board */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 shadow-[inset_0_0_40px_rgba(0,0,0,0.35)]"
@@ -457,7 +440,6 @@ export function ChessBoardView({
       </div>
       </div>
 
-      {/* me: clock + captured tray + material + flip */}
       <div className="flex items-center gap-2 rounded-xl bg-black/50 px-2.5 py-1.5 ring-1 ring-white/10 backdrop-blur">
         <ClockChip
           side={mySide}

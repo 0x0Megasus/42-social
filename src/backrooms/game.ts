@@ -16,13 +16,10 @@ import type { LoadProgress } from './assets/assets';
 
 type GameState = 'menu' | 'playing' | 'paused' | 'dead' | 'won';
 
-/** Final run result, emitted once per run via GameOptions.onEnd. */
 export type RunResult = Stats & { won: boolean };
 
 export type GameOptions = {
-  /** Maze seed — same seed ⇒ identical maze. Defaults to random. */
   seed?: number;
-  /** Called once when a run ends (death or escape). */
   onEnd?: (result: RunResult) => void;
 };
 
@@ -56,23 +53,19 @@ export class Game {
   private time = 0;
   private runTime = 0;
 
-  // waves
   private wave = 0;
   private waveSpawnQueue = 0;
   private spawnTimer = 0;
   private waveBreak = 0;
 
-  // escape mechanic
   private escapeOpen = false;
   private escapeHold = 0;
   private escapeHoldNeeded = 3.0;
   private escapeUnlockedByWave = 5; // after clearing wave 5, exit opens
 
-  // stats
   private stats: Stats = { score: 0, kills: 0, headshots: 0, wave: 1, accuracy: 0, timeSurvived: 0 };
   private shotsFired = 0;
   private shotsHit = 0;
-  // camera kick on shoot (decays fast)
   private shake = 0;
 
   private rafId = 0;
@@ -85,7 +78,6 @@ export class Game {
     this.seed = Math.floor(
       opts.seed ?? (1337 + Math.random() * 100000),
     );
-    // renderer — sized to the container, not the window (embeddable)
     this.renderer = new THREE.WebGLRenderer({
       antialias: false,
       powerPreference: 'high-performance',
@@ -97,21 +89,17 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(this.renderer.domElement);
 
-    // camera + fog
     this.camera = new THREE.PerspectiveCamera(75, cw / ch, 0.05, 120);
     this.scene.fog = new THREE.FogExp2(0x141006, 0.055);
     this.scene.background = new THREE.Color(0x050403);
     this.scene.add(this.camera);
 
-    // ambient fill so darkness isn't pure black
     const amb = new THREE.AmbientLight(0xbfa759, 0.32);
     const hemi = new THREE.HemisphereLight(0xd8c56a, 0x4a3f22, 0.35);
     this.scene.add(amb, hemi);
 
-    // input
     this.input = new Input(this.renderer.domElement);
 
-    // world
     this.level = new Level(this.renderer);
     this.level.generate(this.seed);
     this.scene.add(this.level.group);
@@ -122,15 +110,12 @@ export class Game {
       return grid[cz * w + cx] === 1;
     });
 
-    // entities & fx
     this.zombies = new ZombiePool(this.scene, 42);
     this.fx = new FXSystem(this.scene);
     this.post = new PostFX(this.renderer, this.scene, this.camera);
 
-    // give the synth engine access to real CC0 samples
     this.audio.assets = this.assets;
 
-    // spawn player
     const sp = this.level.data.spawnCell;
     this.player.spawnAt(sp.x * CFG.world.cell + CFG.world.cell / 2, sp.z * CFG.world.cell + CFG.world.cell / 2);
     this.player.onFootstep = (s) => this.audio.footstep(s);
@@ -139,7 +124,6 @@ export class Game {
       this.ui.damageFlash();
     };
 
-    // ui
     this.ui = new UI(container, {
       onStart: () => void this.startRun(),
       onResume: () => this.resume(),
@@ -157,11 +141,9 @@ export class Game {
     this.minimap = new Minimap(this.ui.minimap);
     this.minimap.reset(this.level.data.w, this.level.data.h);
 
-    // weapons callbacks
     this.weapons.onShoot = (spec) => {
       this.audio.gunshot(spec.audio);
       this.shotsFired++;
-      // world-space gunfeel: muzzle blast + shell + camera kick
       const fwd = new THREE.Vector3();
       this.camera.getWorldDirection(fwd);
       const muzzle = this.weapons.getMuzzleWorld();
@@ -172,7 +154,6 @@ export class Game {
     };
     this.weapons.onDryFire = () => this.audio.dryFire();
     this.weapons.onHit = (zombieHit, killed, headshot, point, scoreValue) => {
-      // tracer from the barrel tip to the impact point
       const muzzle = this.weapons.getMuzzleWorld();
       this.fx.tracer(muzzle, point, this.weapons.current.spec.audio);
       if (zombieHit) {
@@ -199,11 +180,9 @@ export class Game {
       this.ui.setAmmo(ammo, spec.magSize, spec.name, reloading);
     };
 
-    // lock/unlock
     this.input.onLockChange = (locked) => {
       if (locked) {
         if (this.state === 'menu' || this.state === 'paused') {
-          // re-entering play from pause via click
           if (this.state === 'paused') this.resume();
         }
       } else {
@@ -216,7 +195,6 @@ export class Game {
     this.loop();
   }
 
-  /** Keep the canvas fitted to the embed container. */
   private onResize = (): void => {
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
@@ -228,19 +206,15 @@ export class Game {
 
   private fxEnabled = true;
 
-  /** Load CC0 samples + GLB viewmodels; menu stays interactive meanwhile. */
   async loadAssets(onProgress: LoadProgress): Promise<void> {
     await this.assets.loadAll(onProgress);
     await this.weapons.loadViewModels((k) => this.assets.models[k]);
-    // optional CC0 zombie skins — silent fallback to procedural rig
     await this.zombies.loadModels((k) => this.assets.models[k]).catch(() => {});
   }
 
-  // ---------------- state transitions ----------------
 
   private async startRun(): Promise<void> {
     this.input.requestLock();
-    // never block the run on audio — it may be suspended until a real gesture
     this.audio.resume().catch(() => {});
     this.audio.uiConfirm();
     this.state = 'playing';
@@ -271,7 +245,6 @@ export class Game {
   }
 
   private resetRun(): void {
-    // regenerate the whole level for a fresh layout (same seed ⇒ same maze)
     this.scene.remove(this.level.group);
     this.level = new Level(this.renderer);
     this.level.generate(this.seed);
@@ -296,7 +269,6 @@ export class Game {
     this.waveBreak = 0;
   }
 
-  // ---------------- waves ----------------
 
   private startWave(n: number): void {
     this.wave = n;
@@ -321,7 +293,6 @@ export class Game {
     const kind = this.pickKind();
     const z = this.zombies.acquire(kind);
     if (!z) return;
-    // spawn far from player but on floor
     const cell = CFG.world.cell;
     const { grid, w, h } = this.level.data;
     const pcell = this.player.pos;
@@ -337,7 +308,6 @@ export class Game {
         return;
       }
     }
-    // fallback: any floor cell
     for (let tries = 0; tries < 200; tries++) {
       const gx = Math.floor(Math.random() * w);
       const gz = Math.floor(Math.random() * h);
@@ -358,7 +328,6 @@ export class Game {
       this.audio.escapeWin();
     }
     if (this.wave >= WAVES.length) {
-      // final wave done — exit definitely open; player must still reach it
       this.ui.showBanner('ALL WAVES CLEARED', 'GET OUT');
       this.audio.escapeWin();
       this.escapeOpen = true;
@@ -367,21 +336,16 @@ export class Game {
     this.waveBreak = 6;
   }
 
-  // ---------------- per-frame ----------------
 
   private updatePlaying(dt: number): void {
     this.runTime += dt;
     this.stats.timeSurvived = this.runTime;
 
-    // flow field update (throttled by cell change internally — just recompute; it's fast)
     this.level.updateFlow(this.player.pos);
 
-    // player
     this.player.update(dt, this.input, this.level, this.input.isLocked);
     this.player.applyToCamera(this.camera, this.time);
-    // recoil into camera
     this.camera.rotation.x += this.weapons.recoilPitch;
-    // shoot kick: tiny random rotational shake, decays fast
     if (this.shake > 0.0001) {
       this.camera.rotation.y += (Math.random() - 0.5) * this.shake * 0.35;
       this.camera.rotation.z += (Math.random() - 0.5) * this.shake * 0.3;
@@ -389,7 +353,6 @@ export class Game {
       this.shake *= Math.exp(-14 * dt);
     }
 
-    // weapons
     const fwd = new THREE.Vector3();
     this.camera.getWorldDirection(fwd);
     if (this.input.isLocked && this.input.mouse0 && this.weapons.current.spec.auto) {
@@ -405,7 +368,6 @@ export class Game {
     if (wheel !== 0) this.weapons.cycle(wheel);
     this.weapons.update(dt, this.player.speed, this.player.sprinting);
 
-    // zombies
     for (const z of this.zombies.active) {
       z.update(
         dt,
@@ -421,7 +383,6 @@ export class Game {
       );
     }
 
-    // wave logic
     if (this.waveSpawnQueue > 0) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
@@ -444,12 +405,10 @@ export class Game {
       }
     }
 
-    // dying zombies anim
     for (const z of this.zombies.items) {
       if (z.dying) z.update(dt, this.player.pos, this.level, () => {}, () => {});
     }
 
-    // escape mechanic
     const esc = this.level.data.escapeCell;
     const escX = esc.x * CFG.world.cell + CFG.world.cell / 2;
     const escZ = esc.z * CFG.world.cell + CFG.world.cell / 2;
@@ -465,12 +424,10 @@ export class Game {
       this.ui.setInteract(false, 0);
     }
 
-    // fx
     this.fx.update(dt, this.camera);
     this.post.setHurt(1 - this.player.health / CFG.player.maxHealth);
     this.audio.setTension(Math.min(1, this.zombies.active.length / 20));
 
-    // hud
     this.ui.setHealth(this.player.health, CFG.player.maxHealth);
     this.ui.setStamina(this.player.stamina);
     this.ui.setScore(this.stats.score);
@@ -517,7 +474,6 @@ export class Game {
     if (this.state === 'playing') {
       this.updatePlaying(dt);
     } else {
-      // idle drift for menu backdrop
       this.player.applyToCamera(this.camera, this.time);
       this.fx.update(dt, this.camera);
     }
@@ -536,7 +492,6 @@ export class Game {
     try {
       this.input.exitLock();
     } catch {
-      /* no lock held */
     }
     this.input.destroy();
     this.zombies.dispose();

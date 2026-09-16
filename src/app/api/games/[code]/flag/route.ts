@@ -3,7 +3,6 @@ import { flagRoom } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
-// POST /api/games/[code]/flag -> claim a win on time (chess clock hit 0)
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }

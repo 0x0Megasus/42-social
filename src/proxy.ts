@@ -43,7 +43,6 @@ async function isSupportUserId(userId: string): Promise<boolean> {
   }
 }
 
-// Everything requires login except /login, /api/auth/* and static assets.
 export default async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
@@ -54,16 +53,12 @@ export default async function proxy(req: NextRequest) {
       isSupport = await isSupportUserId(sessionUserId);
     }
 
-    // Support users bypass everything
     if (isSupport) return NextResponse.next();
 
-    // Non-support: allow /login and /api/auth/* so they can try to log in
-    // (auth routes will block non-support users from creating sessions)
     if (pathname === "/login" || pathname.startsWith("/api/auth")) {
       return NextResponse.next();
     }
 
-    // Block everything else
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         { error: "site under maintenance" },
@@ -71,7 +66,6 @@ export default async function proxy(req: NextRequest) {
       );
     }
 
-    // Redirect to login
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -85,7 +79,6 @@ export default async function proxy(req: NextRequest) {
     return res;
   }
 
-  // ---- Normal mode ----
   if (pathname === "/login") return NextResponse.next();
   const sessionUserId = await getSessionUserId(req);
   if (sessionUserId) return NextResponse.next();

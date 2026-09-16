@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-/** Muhrow33 — unique seed namespace for BACKROOMS: NO-CLIP procedural textures. */
 export const MUHROW33 = 'MUHROW33';
 
 export type TexSet = {
@@ -10,7 +9,6 @@ export type TexSet = {
   ceiling: THREE.Texture;
 };
 
-/** Tiny seeded value-noise implementation (texture-space, no deps). */
 function makeValueNoise(seed: number) {
   const perm = new Uint8Array(512);
   for (let i = 0; i < 256; i++) perm[i] = i;
@@ -46,7 +44,6 @@ function makeValueNoise(seed: number) {
   };
 }
 
-/** fbm helper */
 function fbm(n: (x: number, y: number) => number, x: number, y: number, oct: number): number {
   let v = 0;
   let amp = 0.5;
@@ -75,17 +72,12 @@ function toTexture(cv: HTMLCanvasElement, repeat: number): THREE.Texture {
   return tex;
 }
 
-/**
- * The iconic two-tone yellow wallpaper with vertical stripe pattern,
- * damp stains, and scuffs. 512x512, seamless via mirrored edges.
- */
 function buildWallpaper(seed: number): HTMLCanvasElement {
   const S = 512;
   const { cv, ctx } = makeCanvas(S, S);
   const noise = makeValueNoise(seed);
   const noise2 = makeValueNoise(seed ^ 0x9e3779b9);
 
-  // Base gradient of the mono-yellow
   const grad = ctx.createLinearGradient(0, 0, 0, S);
   grad.addColorStop(0, '#c8b46a');
   grad.addColorStop(0.5, '#bfa759');
@@ -93,7 +85,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, S, S);
 
-  // Fine paper grain
   const img = ctx.getImageData(0, 0, S, S);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -107,7 +98,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
   }
   ctx.putImageData(img, 0, 0);
 
-  // Vertical stripe pattern (the classic look) — darker bands ~64px
   ctx.globalAlpha = 0.14;
   for (let x = 0; x < S; x += 64) {
     ctx.fillStyle = '#7a6a35';
@@ -117,7 +107,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
   }
   ctx.globalAlpha = 1;
 
-  // Damp stains (big soft blotches, darker)
   for (let i = 0; i < 7; i++) {
     const x = noise2(i * 12.7, 3.1) * S;
     const y = noise2(i * 4.3, 9.7) * S;
@@ -132,7 +121,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
     ctx.fill();
   }
 
-  // Scuffs / scratches
   ctx.strokeStyle = 'rgba(60,48,20,0.16)';
   for (let i = 0; i < 26; i++) {
     ctx.lineWidth = 0.5 + noise2(i, 2) * 1.4;
@@ -146,7 +134,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
     ctx.stroke();
   }
 
-  // Dark baseboard-ish grime at the bottom edge (helps the wall meet floor)
   const grime = ctx.createLinearGradient(0, S - 60, 0, S);
   grime.addColorStop(0, 'rgba(40,32,14,0)');
   grime.addColorStop(1, 'rgba(40,32,14,0.35)');
@@ -156,9 +143,6 @@ function buildWallpaper(seed: number): HTMLCanvasElement {
   return cv;
 }
 
-/**
- * Variant wallpaper for special "end rooms" — grayer, sicker tint.
- */
 function buildWallpaperEnd(seed: number): HTMLCanvasElement {
   const cv = buildWallpaper(seed ^ 0x51ab);
   const ctx = cv.getContext('2d')!;
@@ -169,9 +153,6 @@ function buildWallpaperEnd(seed: number): HTMLCanvasElement {
   return cv;
 }
 
-/**
- * Damp mono-yellow office carpet — dense noise blotches, stains, seam lines.
- */
 function buildCarpet(seed: number): HTMLCanvasElement {
   const S = 512;
   const { cv, ctx } = makeCanvas(S, S);
@@ -195,7 +176,6 @@ function buildCarpet(seed: number): HTMLCanvasElement {
   }
   ctx.putImageData(img, 0, 0);
 
-  // Dark damp patches
   for (let i = 0; i < 9; i++) {
     const x = noise2(i * 5.1, 2.2) * S;
     const y = noise2(i * 9.3, 7.7) * S;
@@ -209,7 +189,6 @@ function buildCarpet(seed: number): HTMLCanvasElement {
     ctx.fill();
   }
 
-  // Carpet tile seams every 128px
   ctx.strokeStyle = 'rgba(48,40,16,0.25)';
   ctx.lineWidth = 2;
   for (let p = 0; p <= S; p += 128) {
@@ -226,9 +205,6 @@ function buildCarpet(seed: number): HTMLCanvasElement {
   return cv;
 }
 
-/**
- * Acoustic drop-ceiling tiles with recessed grid and grime.
- */
 function buildCeiling(seed: number): HTMLCanvasElement {
   const S = 512;
   const { cv, ctx } = makeCanvas(S, S);
@@ -250,7 +226,6 @@ function buildCeiling(seed: number): HTMLCanvasElement {
   }
   ctx.putImageData(img, 0, 0);
 
-  // Fissured-tile speckles
   for (let i = 0; i < 900; i++) {
     const x = noise(i * 1.7, i * 2.3) * S;
     const y = noise(i * 3.1, i * 1.1) * S;
@@ -258,7 +233,6 @@ function buildCeiling(seed: number): HTMLCanvasElement {
     ctx.fillRect(x, y, 1.5, 1.5);
   }
 
-  // Grid lines — 2 tiles per texture (each tile 256px)
   ctx.strokeStyle = 'rgba(70,62,40,0.85)';
   ctx.lineWidth = 5;
   for (let p = 0; p <= S; p += 256) {
@@ -271,7 +245,6 @@ function buildCeiling(seed: number): HTMLCanvasElement {
     ctx.lineTo(S, p);
     ctx.stroke();
   }
-  // Soft shadow near the grid
   ctx.strokeStyle = 'rgba(70,62,40,0.18)';
   ctx.lineWidth = 14;
   for (let p = 0; p <= S; p += 256) {
@@ -288,16 +261,11 @@ function buildCeiling(seed: number): HTMLCanvasElement {
   return cv;
 }
 
-/**
- * Zombie face texture for billboards — pale sickly head, dark eye sockets,
- * gaping mouth. Drawn front-facing, centered in the upper half of the canvas.
- */
 export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanvasElement {
   const S = 128;
   const { cv, ctx } = makeCanvas(S, S);
   const noise = makeValueNoise(seed);
 
-  // Head — pale sickly ellipse
   const cx = S / 2;
   const cy = S * 0.42;
   const rx = S * 0.30;
@@ -311,7 +279,6 @@ export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanv
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Skin mottling
   for (let i = 0; i < 26; i++) {
     const x = cx + (noise(i * 3.7, 1) - 0.5) * rx * 1.7;
     const y = cy + (noise(i * 1.9, 7) - 0.5) * ry * 1.6;
@@ -322,7 +289,6 @@ export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanv
     ctx.fill();
   }
 
-  // Eye sockets — dark hollows
   for (const ex of [-1, 1]) {
     const x = cx + ex * rx * 0.42;
     const y = cy - ry * 0.22;
@@ -335,20 +301,17 @@ export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanv
     ctx.ellipse(x, y, rx * 0.26, rx * 0.30, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // tiny pale iris glint
     ctx.fillStyle = 'rgba(214,200,150,0.85)';
     ctx.beginPath();
     ctx.arc(x + ex * 1.5, y, 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Nose shadow
   ctx.fillStyle = 'rgba(40,32,14,0.30)';
   ctx.beginPath();
   ctx.ellipse(cx, cy + ry * 0.12, rx * 0.10, ry * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Mouth — dark gaping maw with teeth hints
   const my = cy + ry * 0.48;
   const mg = ctx.createRadialGradient(cx, my, 1, cx, my, rx * 0.42);
   mg.addColorStop(0, 'rgba(8,5,2,0.98)');
@@ -358,7 +321,6 @@ export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanv
   ctx.ellipse(cx, my, rx * 0.34, ry * 0.22, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // crooked teeth
   ctx.fillStyle = 'rgba(196,184,142,0.85)';
   for (let i = 0; i < 5; i++) {
     const tx = cx - rx * 0.22 + i * rx * 0.11;
@@ -369,15 +331,11 @@ export function buildZombieFaceCanvas(seed: number, kindColor: string): HTMLCanv
   return cv;
 }
 
-/**
- * Zombie body texture — ragged torso blob, used as the billboard base.
- */
 export function buildZombieBodyCanvas(seed: number, kindColor: string): HTMLCanvasElement {
   const S = 128;
   const { cv, ctx } = makeCanvas(S, S);
   const noise = makeValueNoise(seed ^ 0x1234);
 
-  // torso — ragged vertical blob
   const cx = S / 2;
   const g2 = ctx.createRadialGradient(cx, S * 0.52, 6, cx, S * 0.55, S * 0.46);
   g2.addColorStop(0, kindColor);
@@ -388,7 +346,6 @@ export function buildZombieBodyCanvas(seed: number, kindColor: string): HTMLCanv
   ctx.ellipse(cx, S * 0.55, S * 0.34, S * 0.46, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // ragged streaks (clothing rot)
   ctx.strokeStyle = 'rgba(24,20,10,0.5)';
   for (let i = 0; i < 14; i++) {
     ctx.lineWidth = 1 + noise(i, 2) * 2.5;
@@ -399,7 +356,6 @@ export function buildZombieBodyCanvas(seed: number, kindColor: string): HTMLCanv
     ctx.stroke();
   }
 
-  // dark stains
   for (let i = 0; i < 10; i++) {
     const x = cx + (noise(i * 2.3, 4) - 0.5) * S * 0.6;
     const y = S * (0.4 + noise(i * 1.7, 6) * 0.4);
@@ -413,22 +369,16 @@ export function buildZombieBodyCanvas(seed: number, kindColor: string): HTMLCanv
   return cv;
 }
 
-/**
- * Zombie work-clothes canvas — solid stained cloth for low-poly bodies
- * (Quaternius-style flat shaded look). Tileable-ish, 128px.
- */
 export function buildZombieClothCanvas(seed: number, baseColor: string): HTMLCanvasElement {
   const S = 128;
   const { cv, ctx } = makeCanvas(S, S);
   const noise = makeValueNoise(seed ^ 0xc107);
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, S, S);
-  // weave
   for (let y = 0; y < S; y += 2) {
     ctx.fillStyle = `rgba(0,0,0,${0.03 + noise(y, 1) * 0.04})`;
     ctx.fillRect(0, y, S, 1);
   }
-  // rot stains + tears
   for (let i = 0; i < 12; i++) {
     const x = noise(i * 3.1, 7) * S;
     const y = noise(i * 1.3, 3) * S;
@@ -441,7 +391,6 @@ export function buildZombieClothCanvas(seed: number, baseColor: string): HTMLCan
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
   }
-  // seam stitching
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
@@ -450,9 +399,6 @@ export function buildZombieClothCanvas(seed: number, baseColor: string): HTMLCan
   return cv;
 }
 
-/**
- * Zombie skin canvas — sickly flesh with veins + wounds for heads/limbs.
- */
 export function buildZombieSkinCanvas(seed: number, tint: string): HTMLCanvasElement {
   const S = 128;
   const { cv, ctx } = makeCanvas(S, S);
@@ -468,7 +414,6 @@ export function buildZombieSkinCanvas(seed: number, tint: string): HTMLCanvasEle
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
   }
-  // veins
   ctx.strokeStyle = 'rgba(90,30,25,0.4)';
   for (let i = 0; i < 8; i++) {
     ctx.lineWidth = 1 + noise(i, 6) * 1.5;
@@ -488,10 +433,8 @@ export function buildZombieSkinCanvas(seed: number, tint: string): HTMLCanvasEle
 
 let cached: TexSet | null = null;
 
-/** Build the full world texture set (cached). */
 export function buildTextures(seedStr: string): TexSet {
   if (cached) return cached;
-  // Derive numeric seed from the namespace string
   let seed = 2166136261;
   for (let i = 0; i < seedStr.length; i++) {
     seed ^= seedStr.charCodeAt(i);

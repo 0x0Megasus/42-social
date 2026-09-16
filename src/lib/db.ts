@@ -2,17 +2,9 @@ import { getRtdb, isRtdbConfigured, rtdb } from "@/lib/fbrdb";
 import { isSupportUser } from "@/lib/support";
 import { cached, invalidatePrefix } from "@/lib/cache";
 
-// Storage engine: Firebase Realtime Database, ONLY.
-// The server refuses to boot routes without the three FIREBASE_* env vars,
-// so data can never silently fall back to an insecure local store.
-// Public API below is unchanged — routes don't touch the transport.
 
 export type SocialLink = { label: string; url: string };
 
-// Favorite song/artist snapshot (resolved server-side from a pasted
-// Spotify link via the public oEmbed endpoint — no API keys, no OAuth).
-// The embed iframe renders its own live metadata; the snapshot keeps the
-// card meaningful when embeds are blocked.
 export type UserSpotify = {
   kind: "track" | "artist";
   id: string;
@@ -33,26 +25,17 @@ export type User = {
   coalition: string | null;
   bio: string;
   socials: SocialLink[];
-  /** profile cover banner — any working https image/GIF link */
   cover: string | null;
-  /** animated cover content (Pinterest video pins) — autoplays the banner */
   coverVideo: string | null;
-  /** favorite song (track) or singer (artist) */
   spotify: UserSpotify | null;
   lastSeen: string | null;
   createdAt: string;
-  // lowercase name for case-insensitive prefix search (indexOn nameLower)
   nameLower?: string;
-  // denormalized counters (maintained on write, backfilled lazily)
   postsCount?: number;
   followersCount?: number;
   followingCount?: number;
 };
 
-// Author snapshot written onto posts/comments at creation time, so feeds
-// never need a user-table join to render names/avatars. Stale until the
-// author edits their profile (rare) — names/avatars are read-heavy,
-// write-rare, the textbook snapshot case.
 export type AuthorSnapshot = {
   id: string;
   name: string;
@@ -77,15 +60,12 @@ export type Post = {
   body: string;
   image: string | null;
   thumb: string | null;
-  /** natural image dimensions (for ratio-correct rendering) */
   imgW?: number | null;
   imgH?: number | null;
   video: PostVideo | null;
-  /** Cloudinary public_ids of attached files (for destroy on delete) */
   cloudIds?: string[] | null;
   edited: boolean;
   deleted: boolean;
-  /** founder announcement: pinned posts top everyone's feed (support's own posts only) */
   pinned?: boolean;
   pinnedAt?: string | null;
   createdAt: string;
@@ -137,7 +117,6 @@ export type MessageAttachment = {
   peaks: number[] | null;
   bytes: number | null;
   mime: string | null;
-  /** Cloudinary public_id (for destroy on delete) */
   publicId?: string | null;
 };
 
@@ -189,8 +168,6 @@ function assertRtdb(): void {
   }
 }
 
-// Serialize all DB access: prevents lost updates when requests interleave
-// or when two processes (e.g. :3000 + :3101) share the same file.
 let mutex: Promise<void> = Promise.resolve();
 
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -202,13 +179,6 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-// Per-collection normalizers (extracted from normalize() so scoped reads
-// get identical defaults without pulling the whole root).
-// NOTE: the `(x as T)` casts are load-bearing — `in` narrows required props
-// to never, and casting back out is exactly what the original did.
-// Every nullable profile field gets a null default here: legacy rows often
-// MISS keys entirely (undefined), and a single undefined value makes RTDB
-// reject an entire set()/update() write with a 500.
 export function normalizeUser(u: User): User {
   if (!("lastSeen" in u)) (u as User).lastSeen = null;
   if ((u as User).login42 === undefined) (u as User).login42 = null;
@@ -220,8 +190,6 @@ export function normalizeUser(u: User): User {
   if ((u as User).coverVideo === undefined) (u as User).coverVideo = null;
   if ((u as User).spotify === undefined) (u as User).spotify = null;
   else if ((u as User).spotify !== null) {
-    // Coerce legacy garbage to null — the card only renders well-formed
-    // { kind, id } snapshots.
     const s = (u as User).spotify as unknown as Record<string, unknown>;
     if (
       !s ||
@@ -250,11 +218,6 @@ export function normalizePost(p: Post): Post {
   if (!("deleted" in p)) (p as Post).deleted = false;
   if ((p as Post).pinned === undefined) (p as Post).pinned = false;
   if ((p as Post).pinnedAt === undefined) (p as Post).pinnedAt = null;
-  // Every nullable/optional field gets an explicit default here: legacy or
-  // partially-written rows often MISS keys entirely (undefined), and a
-  // single undefined value makes RTDB reject an entire set()/update()
-  // write with a 500. Media fields especially must never stay undefined —
-  // a resurrected tombstone row without them renders as a ghost post.
   if ((p as Post).image === undefined) (p as Post).image = null;
   if ((p as Post).thumb === undefined) (p as Post).thumb = null;
   if ((p as Post).video === undefined) (p as Post).video = null;
@@ -302,19 +265,10 @@ async function readFresh(): Promise<DB> {
   return normalize({ ...empty, ...((snap.val() ?? {}) as Partial<DB>) });
 }
 
-// Fresh read (never stale).
 export async function readDB(): Promise<DB> {
   return enqueue(readFresh);
 }
 
-// Atomic read-modify-write via RTDB root transaction (safe across instances).
-// `fn` must be SYNCHRONOUS and side-effect free (may run more than once).
-// Do NOT call readDB inside `fn`.
-//
-// PREFER transactCollection() below for single-collection writes: a root
-// transaction ships the ENTIRE database on every write (users+posts+
-// comments+messages…) and serializes all writers against each other.
-// Scoped transactions move O(DB) → O(collection).
 export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
   return enqueue(async () => {
     assertRtdb();
@@ -340,12 +294,6 @@ export async function updateDB<T>(fn: (db: DB) => T): Promise<T> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Scoped access: per-collection reads, indexed queries, and subtree
-// transactions. A social feed with 100k posts must never download 100k
-// posts to render 20 — these primitives are how every hot path avoids the
-// full-root read. Writes stay atomic per collection (RTDB transactions).
-// ---------------------------------------------------------------------------
 
 export type CollectionName =
   | "users"
@@ -372,7 +320,6 @@ function normalizeRow<N extends CollectionName>(
   name: N,
   row: CollectionRow[N]
 ): CollectionRow[N] {
-  // Generic N doesn't narrow with switch — cast through unknown per branch.
   if (name === "users") return normalizeUser(row as unknown as User) as CollectionRow[N];
   if (name === "posts") return normalizePost(row as unknown as Post) as CollectionRow[N];
   if (name === "comments")
@@ -382,8 +329,6 @@ function normalizeRow<N extends CollectionName>(
   return row;
 }
 
-// RTDB stores our arrays natively but returns objects for query results —
-// normalize both shapes to a plain array.
 function toRows<N extends CollectionName>(
   name: N,
   val: unknown
@@ -391,22 +336,12 @@ function toRows<N extends CollectionName>(
   return collectionEntries(name, val).map(({ row }) => row);
 }
 
-// Key-preserving variant of toRows: same filtering/normalization, but each
-// row keeps its RTDB storage key. REQUIRED for any targeted write — deletes
-// null out slots (`/posts/3 = null`), so the Nth surviving row is NOT at
-// storage key N. Using a compacted findIndex as a storage key writes to the
-// wrong slot: it resurrects tombstones as partial ghost rows (no id/author/
-// createdAt) or corrupts a neighboring row. Pure (no I/O) — unit-tested.
 export function collectionEntries<N extends CollectionName>(
   name: N,
   val: unknown
 ): { key: string; row: CollectionRow[N] }[] {
   const out: { key: string; row: CollectionRow[N] }[] = [];
   if (Array.isArray(val)) {
-    // Index loop (NOT map + destructure): RTDB can hand back sparse arrays
-    // (deleted slots as holes, not nulls). .map preserves holes and for..of
-    // yields undefined for them, which crashes tuple destructuring before
-    // any guard runs. Index access reads holes as undefined → skipped below.
     for (let i = 0; i < val.length; i++) {
       const v: unknown = val[i];
       if (v && typeof v === "object")
@@ -415,8 +350,6 @@ export function collectionEntries<N extends CollectionName>(
     return out;
   }
   if (val && typeof val === "object") {
-    // Object.entries always yields real [key, value] pairs — safe to
-    // destructure; null tombstones are skipped by the guard.
     for (const [key, v] of Object.entries(val as Record<string, unknown>)) {
       if (v && typeof v === "object")
         out.push({ key, row: normalizeRow(name, v as CollectionRow[N]) });
@@ -425,7 +358,6 @@ export function collectionEntries<N extends CollectionName>(
   return out;
 }
 
-// Read ONE collection (never the root). O(collection), not O(database).
 export async function readCollection<N extends CollectionName>(
   name: N
 ): Promise<CollectionRow[N][]> {
@@ -436,9 +368,6 @@ export async function readCollection<N extends CollectionName>(
   return toRows(name, snap.val());
 }
 
-// Same as readCollection but keeps RTDB storage keys. Use this whenever the
-// caller writes back to a specific row (`/${name}/${key}/...`) — the key is
-// the only correct address once deletes have left null holes behind.
 export async function readCollectionEntries<N extends CollectionName>(
   name: N
 ): Promise<{ key: string; row: CollectionRow[N] }[]> {
@@ -452,25 +381,13 @@ export async function readCollectionEntries<N extends CollectionName>(
 export type CollectionQuery = {
   orderBy: string;
   equalTo?: string | number | boolean | null;
-  /** inclusive lower bound (prefix search start) */
   startAt?: string | number;
-  /** inclusive upper bound */
   endAt?: string | number;
-  /** exclusive upper bound for cursor pagination (usually a createdAt ISO) */
   endBefore?: string | number;
-  /** newest-first page size (limitToLast) */
   limit?: number;
-  /** oldest-first page size (limitToFirst) — for prefix ranges */
   first?: number;
 };
 
-// Indexed server-side query with newest-first cursor pagination.
-// Requires matching `.indexOn` entries in database.rules.json — WITHOUT
-// them RTDB rejects the query ("Index not defined"). When that happens we
-// transparently fall back to a full-collection scan filtered in memory:
-// correct everywhere, fast once rules are deployed. Deploy rules with:
-//   firebase deploy --only database   (or paste database.rules.json in console)
-// Returns rows in ASCENDING orderBy order (reverse for display).
 export async function queryCollection<N extends CollectionName>(
   name: N,
   q: CollectionQuery
@@ -493,8 +410,6 @@ export async function queryCollection<N extends CollectionName>(
   }
 }
 
-// Logged once per query shape (not per request) so a missing index doesn't
-// spam the console on every poll — the first line tells you what to deploy.
 const warnedFallbacks = new Set<string>();
 
 function warnFallback(name: string, orderBy: string, cause: unknown): void {
@@ -554,8 +469,6 @@ async function queryFallback<N extends CollectionName>(
   return applyQueryFilter(rows, (r) => orderValue(name, q, r), q);
 }
 
-// Same as queryCollection but keeps storage keys (needed for targeted
-// deletes/updates of matched rows without a full-collection transaction).
 export async function queryCollectionEntries<N extends CollectionName>(
   name: N,
   q: CollectionQuery
@@ -593,7 +506,6 @@ export async function queryCollectionEntries<N extends CollectionName>(
     return out;
   } catch (e) {
     warnFallback(name, q.orderBy, e);
-    // Key-preserving full scan: read the raw node so storage indices survive.
     const snap = await rtdb(`${name}.get`, () =>
       getRtdb().ref(`/${name}`).get()
     );
@@ -618,7 +530,6 @@ export async function queryCollectionEntries<N extends CollectionName>(
   }
 }
 
-// Atomic read-modify-write on ONE collection subtree.
 export async function transactCollection<N extends CollectionName, T>(
   name: N,
   fn: (rows: CollectionRow[N][]) => T
@@ -644,7 +555,6 @@ export async function transactCollection<N extends CollectionName, T>(
   });
 }
 
-// Append one row to a collection, atomically. Returns the stored row.
 export async function pushToCollection<N extends CollectionName>(
   name: N,
   row: CollectionRow[N]
@@ -655,15 +565,11 @@ export async function pushToCollection<N extends CollectionName>(
   });
 }
 
-// Direct leaf write (no read). For counters and flags only — callers must
-// have computed the value from a consistent read or an atomic increment
-// performed inside transactCollection.
 export async function setPath(path: string, value: unknown): Promise<void> {
   assertRtdb();
   await rtdb(`set:${path}`, () => getRtdb().ref(path).set(value));
 }
 
-// Multi-path fan-out in ONE round trip (atomic across the listed leaves).
 export async function updatePaths(
   paths: Record<string, unknown>
 ): Promise<void> {
@@ -673,21 +579,16 @@ export async function updatePaths(
   await rtdb("multi.update", () => getRtdb().ref("/").update(paths));
 }
 
-// Raw subtree read (for keyed maps). Returns null when absent.
 export async function readPath<T>(path: string): Promise<T | null> {
   assertRtdb();
   const snap = await rtdb(`get:${path}`, () => getRtdb().ref(path).get());
   return (snap.val() ?? null) as T | null;
 }
 
-// RTDB keys forbid `.` `$` `#` `[` `]` `/` — emails are lowercased with
-// dots mapped to commas (Firebase convention) for pointer keys.
 export function encodeEmailKey(email: string): string {
   return email.toLowerCase().replace(/\./g, ",");
 }
 
-// O(1) user lookup via the /users-by-id map (dual-written on signup +
-// profile edit). Falls back to a legacy array scan for pre-map accounts.
 export async function readUserById(id: string): Promise<User | null> {
   assertRtdb();
   try {
@@ -697,7 +598,6 @@ export async function readUserById(id: string): Promise<User | null> {
     const v = snap.val();
     if (v && typeof v === "object") return normalizeUser(v as User);
   } catch {
-    /* fall through to legacy scan */
   }
   const users = await readCollection("users");
   return users.find((u) => u.id === id) ?? null;
@@ -707,9 +607,6 @@ export async function writeUserById(id: string, user: User): Promise<void> {
   await setPath(`/users-by-id/${id}`, user);
 }
 
-// Atomic leaf transaction — O(1) regardless of collection size. This is
-// the write primitive that scales: toggling a like touches one leaf, not
-// a million-row array.
 export async function transactLeaf<T>(
   path: string,
   fn: (current: unknown) => T | undefined
@@ -718,8 +615,6 @@ export async function transactLeaf<T>(
   return rtdb(`tx:${path}`, () => getRtdb().ref(path).transaction(fn));
 }
 
-// Conflict-free push-key (firebase push ids are time-ordered + unique).
-// Writes via setPath need no transaction at all.
 export function newPushKey(collection: string): string {
   assertRtdb();
   const key = getRtdb().ref(`/${collection}`).push().key;
@@ -727,8 +622,6 @@ export function newPushKey(collection: string): string {
   return key;
 }
 
-// Chunked multi-path write for backfills/migrations (keeps each update
-// small enough to stay fast and atomic).
 export async function chunkedUpdate(
   entries: [string, unknown][],
   size = 500
@@ -738,8 +631,6 @@ export async function chunkedUpdate(
   }
 }
 
-// O(1) post lookup via /posts-by-id (dual-written on create/edit, removed
-// on delete). Falls back to a legacy array scan for pre-map rows.
 export async function readPostById(id: string): Promise<Post | null> {
   assertRtdb();
   try {
@@ -749,7 +640,6 @@ export async function readPostById(id: string): Promise<Post | null> {
     const v = snap.val();
     if (v && typeof v === "object") return normalizePost(v as Post);
   } catch {
-    /* fall through to legacy scan */
   }
   const posts = await readCollection("posts");
   return posts.find((p) => p.id === id) ?? null;
@@ -763,8 +653,6 @@ export async function removePostById(id: string): Promise<void> {
   await setPath(`/posts-by-id/${id}`, null);
 }
 
-// Handle pointers: /users-by-handle/{lower(login42|name|id)} -> userId.
-// Written on signup + rename; lets profile pages resolve O(1).
 export async function indexUserHandles(
   user: Pick<User, "id" | "login42" | "name">,
   prevName?: string | null
@@ -793,7 +681,6 @@ export async function resolveUserId(handle: string): Promise<string | null> {
       const v = snap.val();
       if (typeof v === "string" && v) return v;
     } catch {
-      /* try next key, then legacy scan */
     }
   }
   const users = await readCollection("users");
@@ -807,8 +694,6 @@ export async function resolveUserId(handle: string): Promise<string | null> {
   );
 }
 
-// Cached profile read (30s TTL + single-flight). Profiles are read on
-// nearly every request and change rarely — this absorbs the burst.
 export function cachedUserById(id: string): Promise<User | null> {
   return cached(`user:${id}`, 30_000, () => readUserById(id));
 }
@@ -827,12 +712,6 @@ export type UserUpsert = {
   coalition: string | null;
 };
 
-// Signup/login without a root transaction (the old updateDB-on-`/` read
-// the entire database and timed out as it grew). Flow:
-// 1. Email pointer (`/users-by-email/{key}`) → O(1) hit for logins.
-// 2. Miss → atomic leaf-claim of the pointer (race guard), then scoped
-//    appends. A lost race re-reads the winner — never duplicates.
-// Gap-fills only touch empty fields, never user-edited profile data.
 export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
   const key = `/users-by-email/${encodeEmailKey(input.email)}`;
   const pointed = await readPath<string>(key).catch(() => null);
@@ -848,12 +727,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
         existing.name = input.name;
         dirty = true;
       }
-      // Provider avatars go stale (lh3.googleusercontent.com URLs 404 over
-      // time → the error page gets ORB-blocked and every avatar degrades to
-      // an initial letter). Avatars aren't user-editable in-app, so the
-      // provider is authoritative: refresh whenever it hands us a different
-      // URL. Names stay gap-fill-only — a login must never clobber a
-      // profile rename.
       if (input.avatar && existing.avatar !== input.avatar) {
         existing.avatar = input.avatar;
         dirty = true;
@@ -872,8 +745,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
       }
       if (dirty) {
         await writeUserById(existing.id, existing).catch(() => null);
-        // Storage-key write: compacted findIndex is wrong once deletes
-        // left null holes (see collectionEntries).
         const entries = await readCollectionEntries("users").catch(() => []);
         const hit = entries.find(({ row }) => row.id === existing.id);
         if (hit)
@@ -883,7 +754,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
       }
       return existing;
     }
-    // Pointer dangles — fall through and recreate.
   }
   const freshId = uid("u");
   const tx = await transactLeaf(key, (cur) =>
@@ -897,9 +767,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
     }
     throw new Error("signup race — retry the request");
   }
-  // Claim won but the pointer is new: a legacy account may predate
-  // pointers — adopt it instead of forking a duplicate. (One scan per
-  // legacy user, once ever; the pointer makes all future logins O(1).)
   const legacy = await readCollection("users").catch(() => []);
   const match = legacy.find(
     (u) => u.email.toLowerCase() === input.email.toLowerCase()
@@ -938,8 +805,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
 }
 
 export function uid(prefix = "id"): string {
-  // crypto.randomUUID is collision-proof and timing-safe; keep the readable
-  // prefix so ids stay greppable in RTDB (`p_…`, `c_…`, `m_…`).
   try {
     const uuid =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -947,7 +812,6 @@ export function uid(prefix = "id"): string {
         : null;
     if (uuid) return `${prefix}_${uuid}`;
   } catch {
-    /* fall through to Math.random on very old runtimes */
   }
   return `${prefix}_${Date.now().toString(36)}_${Math.random()
     .toString(36)

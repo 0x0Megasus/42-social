@@ -38,7 +38,6 @@ export async function GET(req: Request) {
       60
     );
     const avatar = me.image?.link ?? null;
-    // Scoped email upsert (no root transaction — see google route).
     const user = await upsertUserByEmail({
       email: me.email,
       name: fullName,

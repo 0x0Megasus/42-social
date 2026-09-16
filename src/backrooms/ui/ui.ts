@@ -1,5 +1,3 @@
-/** Full DOM overlay UI — VHS camcorder aesthetic. */
-
 export type Stats = {
   score: number;
   kills: number;
@@ -13,7 +11,6 @@ const CSS = `
 #ui { position: absolute; inset: 0; pointer-events: none; font-family: 'Courier New', ui-monospace, monospace; color: #e8dcb2; z-index: 10; user-select: none; overflow: hidden; }
 #ui .hidden { display: none !important; }
 
-/* ---------- HUD ---------- */
 #hud { position: absolute; inset: 0; opacity: 0; transition: opacity 0.4s; text-shadow: 0 0 6px rgba(232,220,178,0.35); }
 #hud.on { opacity: 1; }
 
@@ -41,7 +38,6 @@ const CSS = `
 #reloadHint { font-size: 11px; color: #d86a3a; letter-spacing: 0.2em; margin-top: 4px; visibility: hidden; }
 #reloadHint.on { visibility: visible; animation: recblink 0.8s steps(2) infinite; }
 
-/* crosshair */
 #xh { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
 .xh-l { position: absolute; background: rgba(232,220,178,0.85); box-shadow: 0 0 3px rgba(0,0,0,0.8); }
 .xh-h { width: 9px; height: 1.5px; top: -0.75px; }
@@ -57,7 +53,6 @@ const CSS = `
 #hitmark.show { animation: hitpop 0.25s ease-out; }
 @keyframes hitpop { 0% { opacity: 1; transform: translate(-50%,-50%) rotate(45deg) scale(1.25);} 100% { opacity: 0; transform: translate(-50%,-50%) rotate(45deg) scale(0.85);} }
 
-/* wave banner + feed */
 #banner { position: absolute; top: 16%; left: 0; right: 0; text-align: center; font-size: 26px; letter-spacing: 0.5em; opacity: 0; }
 #banner.show { animation: bannerIn 2.8s ease-out; }
 @keyframes bannerIn { 0% { opacity: 0; letter-spacing: 0.9em; } 12% { opacity: 1; letter-spacing: 0.5em; } 80% { opacity: 1; } 100% { opacity: 0; } }
@@ -73,12 +68,10 @@ const CSS = `
 #interact .iprogress { width: 180px; height: 3px; background: rgba(232,220,178,0.2); margin: 8px auto 0; }
 #interact .iprogress i { display: block; height: 100%; width: 0%; background: #9cc46a; box-shadow: 0 0 8px #9cc46a; }
 
-/* damage flash overlay */
 #dmgflash { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(180,30,10,0.55) 100%); opacity: 0; }
 #dmgflash.show { animation: dmg 0.5s ease-out; }
 @keyframes dmg { 0% { opacity: 1; } 100% { opacity: 0; } }
 
-/* ---------- Menus ---------- */
 .menu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; pointer-events: auto; background: radial-gradient(ellipse at center, rgba(5,4,3,0.25) 0%, rgba(5,4,3,0.88) 100%); backdrop-filter: blur(2px); }
 .title { font-size: clamp(34px, 7vw, 72px); letter-spacing: 0.3em; color: #d8c56a; text-shadow: 0 0 24px rgba(216,197,106,0.35); position: relative; }
 .title .glitch { position: absolute; inset: 0; color: #ff6b4a; opacity: 0; animation: glitch 4.5s infinite; clip-path: inset(30% 0 40% 0); }
@@ -92,7 +85,6 @@ const CSS = `
 .hintline { margin-top: 26px; font-size: 11px; letter-spacing: 0.25em; opacity: 0.4; }
 .creds { position: absolute; bottom: 18px; font-size: 10px; letter-spacing: 0.3em; opacity: 0.3; }
 
-/* settings */
 .panel { background: rgba(8,7,4,0.92); border: 1px solid rgba(232,220,178,0.3); padding: 30px 40px; min-width: 340px; }
 .panel h2 { margin: 0 0 22px; font-size: 15px; letter-spacing: 0.5em; opacity: 0.85; text-align: center; }
 .setrow { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; font-size: 12px; letter-spacing: 0.15em; }
@@ -101,11 +93,9 @@ const CSS = `
 .toggle { pointer-events: auto; cursor: pointer; border: 1px solid rgba(232,220,178,0.4); padding: 3px 12px; letter-spacing: 0.2em; }
 .toggle.on { background: rgba(216,197,106,0.2); border-color: #d8c56a; color: #ffe9a8; }
 
-/* how to */
 .howto { display: grid; grid-template-columns: auto auto; gap: 7px 20px; font-size: 13px; letter-spacing: 0.1em; margin-top: 8px; }
 .howto .k { color: #ffd23a; text-align: right; }
 
-/* end screens */
 .endstats { margin-top: 26px; display: grid; grid-template-columns: auto auto; gap: 8px 34px; font-size: 14px; letter-spacing: 0.18em; }
 .endstats .v { color: #ffd23a; text-align: right; }
 .endtitle.dead { color: #ff6b4a; text-shadow: 0 0 30px rgba(255,107,74,0.4); }
@@ -298,7 +288,6 @@ export class UI {
     this.volValEl = root.querySelector('#volVal')!;
     this.scoreLabel = root.querySelector('#scoreLabel')!;
 
-    // wire buttons
     const click = (id: string, fn: () => void) => {
       const b = root.querySelector(id)!;
       b.addEventListener('click', () => {
@@ -396,7 +385,7 @@ export class UI {
     this.banner.textContent = text;
     this.subbanner.textContent = sub;
     this.banner.classList.remove('show');
-    void this.banner.offsetWidth; // restart animation
+    void this.banner.offsetWidth;
     this.banner.classList.add('show');
   }
 
@@ -444,17 +433,14 @@ export class UI {
     this.show('end');
   }
 
-  /** Remove the overlay root + injected stylesheet. Idempotent. */
   destroy(): void {
     try {
       this.root.remove();
     } catch {
-      /* already gone */
     }
     try {
       this.styleEl.remove();
     } catch {
-      /* already gone */
     }
   }
 }

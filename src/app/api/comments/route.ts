@@ -15,15 +15,10 @@ import { rateLimit, isDuplicate } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
 import { enrichComments } from "@/lib/feed";
 
-// Max 6 comments/min per user, min 3s between comments, no repeat text/60s.
 const PER_MIN = 6;
 const GAP_MS = 3_000;
 const PAGE = 200;
 
-// GET /api/comments?postId=&limit=&offset= -> { comments, nextOffset }
-// Indexed by postId server-side; offset pages the (bounded) thread
-// chronologically. Offset shifts if new comments land mid-browse — fine
-// for history browsing; the live head refreshes separately.
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   const postId = q.get("postId") ?? "";
@@ -35,8 +30,6 @@ export async function GET(req: Request) {
     equalTo: postId,
     limit: 100_000,
   }).catch(() => []);
-  // orderBy postId groups the thread; order chronologically in memory
-  // (per-post volume is bounded — hundreds, not millions).
   const live = rows
     .filter((c) => !c.deleted)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -127,8 +120,6 @@ export async function POST(req: Request) {
       ? {
           id: me.id,
           name: me.name,
-          // Legacy user rows miss nullable keys (undefined) — RTDB rejects
-          // entire writes containing undefined, so coerce everything.
           login42: me.login42 ?? null,
           avatar: me.avatar ?? null,
           campus: me.campus ?? null,
@@ -136,7 +127,6 @@ export async function POST(req: Request) {
         }
       : null,
   };
-  // Push-key write: conflict-free, O(1), no transaction.
   const key = newPushKey("comments");
   await setPath(`/comments/${key}`, c);
   if (post.authorId !== sub) {

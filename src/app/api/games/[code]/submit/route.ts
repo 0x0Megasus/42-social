@@ -3,9 +3,6 @@ import { submitResult } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
-// POST /api/games/[code]/submit { score, kills, wave, time, won } ->
-// submit one backrooms run. Solo settles at once; duel settles when both
-// seats are in. One submit per seat per round.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ code: string }> }

@@ -1,7 +1,6 @@
 import { randRange } from '../core/math';
 import type { AssetStore } from '../assets/assets';
 
-/** Procedural WebAudio engine + real CC0 sample playback. Zero required audio files. */
 export class AudioEngine {
   ctx: AudioContext | null = null;
   master: GainNode;
@@ -24,7 +23,6 @@ export class AudioEngine {
     this.master.gain.value = this.volume;
     this.master.connect(ctx.destination);
 
-    // Shared reverb (procedural impulse response)
     this.convolver = ctx.createConvolver();
     this.convolver.buffer = this.makeReverbIR(1.8, 2.2);
     this.wetGain = ctx.createGain();
@@ -40,7 +38,6 @@ export class AudioEngine {
     this.ambienceBus.gain.value = 0.5;
     this.ambienceBus.connect(this.master);
 
-    // noise buffer for gunshots/footsteps
     this.noiseBuf = this.makeNoiseBuffer(2);
   }
 
@@ -85,7 +82,6 @@ export class AudioEngine {
     if (this.master) this.master.gain.value = v;
   }
 
-  /** The iconic 60Hz fluorescent hum + slow filtered ventilation air. */
   private startHum(): void {
     if (!this.ctx) return;
     const ctx = this.ctx;
@@ -93,7 +89,6 @@ export class AudioEngine {
     humGain.gain.value = 0.045;
     humGain.connect(this.ambienceBus);
 
-    // 60Hz fundamental + harmonics
     for (const mult of [1, 2, 3]) {
       const osc = ctx.createOscillator();
       osc.type = 'sine';
@@ -106,7 +101,6 @@ export class AudioEngine {
       this.humNodes.push(osc);
     }
 
-    // ventilation air — filtered noise loop
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
     src.loop = true;
@@ -121,7 +115,6 @@ export class AudioEngine {
     src.start();
   }
 
-  /** Raise ambience tension 0..1 (wave escalation). */
   setTension(t: number): void {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
@@ -166,7 +159,6 @@ export class AudioEngine {
     o.stop(t + a + d + 0.05);
   }
 
-  /** Play a decoded sample with optional gain/rate; returns false if unavailable. */
   playSample(buf: AudioBuffer | undefined, gain = 1, rate = 1, toReverb = true): boolean {
     if (!buf || !this.ctx || this.ctx.state !== 'running') return false;
     const ctx = this.ctx;
@@ -181,8 +173,6 @@ export class AudioEngine {
     src.start();
     return true;
   }
-
-  // ---------------- SFX ----------------
 
   gunshot(kind: 'pistol' | 'smg' | 'shotgun'): void {
     if (!this.ctx || this.ctx.state !== 'running') return;
@@ -199,7 +189,6 @@ export class AudioEngine {
       this.noiseShot(t, 0.09, 'highpass', 900, 0.72);
       this.tone(200, 'square', t, 0.001, 0.4, 0.06, 60);
     } else {
-      // shotgun: layered SMG body + rifle crack pitched down + synth thump tail
       const fired = A ? this.playSample(A.pick('smg_fire', 4), 1.0, randRange(0.6, 0.7)) : false;
       this.playSample(A?.buffers['rifle_fire2'], 0.8, randRange(0.8, 0.9));
       const t = this.ctx.currentTime;

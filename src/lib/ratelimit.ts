@@ -1,5 +1,3 @@
-// In-memory sliding-window rate limits (single-process v1).
-// For multi-instance production, move this to Redis.
 
 const hits = new Map<string, number[]>();
 const lastBody = new Map<string, { body: string; at: number }>();
@@ -12,7 +10,6 @@ function prune() {
   for (const [k, v] of lastBody) if (now - v.at > 3_600_000) lastBody.delete(k);
 }
 
-/** Sliding window: at most `limit` hits per `windowMs`. */
 export function rateLimit(
   key: string,
   limit: number,
@@ -31,7 +28,6 @@ export function rateLimit(
   return { ok: true, retryAfter: 0 };
 }
 
-/** True if the same body was sent within `windowMs` (spam/double-submit). */
 export function isDuplicate(
   key: string,
   body: string,
@@ -44,11 +40,6 @@ export function isDuplicate(
   return !!prev && prev.body === body && now - prev.at < windowMs;
 }
 
-/**
- * Standard rate-limit headers (skill: api-design-principles).
- * Returns `X-RateLimit-Limit/Remaining/Reset` + `Retry-After` on rejection
- * so clients can back off without parsing bodies.
- */
 export function rateLimitInfo(
   key: string,
   limit: number,

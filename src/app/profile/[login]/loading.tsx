@@ -1,7 +1,5 @@
 import { PostCardSkeleton } from "@/components/skeletons";
 
-// Mirrors Profile: header card (avatar 72 + name + handle + stats + actions)
-// → game record strip → posts.
 export default function Loading() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading profile">

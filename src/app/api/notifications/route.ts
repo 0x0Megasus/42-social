@@ -12,7 +12,6 @@ export async function GET() {
   if (!session)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const items = await listNotifications(session.sub, 30);
-  // Author previews for the visible page only (cached profiles).
   const fromIds = [...new Set(items.map((n) => n.fromId))];
   const users = await Promise.all(fromIds.map((id) => cachedUserById(id)));
   const byId = new Map(users.filter((u) => !!u).map((u) => [u!.id, u!]));
@@ -40,9 +39,6 @@ export async function POST() {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/notifications            -> remove ALL my notifications
-// DELETE /api/notifications?id=<id>    -> remove one
-// Actually deletes the records from RTDB (not a tombstone) to reclaim space.
 export async function DELETE(req: Request) {
   const session = await getSession();
   if (!session)

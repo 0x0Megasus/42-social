@@ -18,7 +18,6 @@ const KIND_STATS: Record<ZombieKind, { health: number; speed: number; damage: nu
   brute: { health: 300, speed: 1.1, damage: 25, score: 300, color: '#5c5140', size: 1.35 },
 };
 
-// Shared low-poly geometries (Quaternius-style chunky boxes, reused across pool)
 const GEO = {
   torso: new THREE.BoxGeometry(0.52, 0.62, 0.3),
   head: new THREE.BoxGeometry(0.32, 0.36, 0.32),
@@ -30,12 +29,6 @@ const GEO = {
 GEO.arm.translate(0, -0.28, 0); // pivot at shoulder
 GEO.leg.translate(0, -0.34, 0); // pivot at hip
 
-/**
- * One zombie: articulated low-poly rig (CC0 Quaternius-style) with procedural
- * walk/attack animation. Falls back to this rig when no GLB skin is loaded —
- * drop Quaternius "Zombie Apocalypse Kit" GLBs into public/models/zombies/
- * (zombie_shambler.glb etc.) to use real skins instead (see loadModels).
- */
 export class Zombie {
   kind: ZombieKind;
   group = new THREE.Group();
@@ -105,19 +98,16 @@ export class Zombie {
     skinTex.colorSpace = THREE.SRGBColorSpace;
     const faceTex = new THREE.CanvasTexture(buildZombieFaceCanvas(seed ^ 0x55, kindColor));
     faceTex.colorSpace = THREE.SRGBColorSpace;
-    // keep legacy body canvas referenced so old art stays in the bundle path
     void buildZombieBodyCanvas;
 
     const cloth = this.lam('#ffffff', clothTex);
     const skin = this.lam('#ffffff', skinTex);
     const pants = this.lam(this.kind === 'runner' ? '#4a4030' : '#3a3428', clothTex);
 
-    // torso
     this.torso = new THREE.Mesh(GEO.torso, cloth);
     this.torso.position.y = 1.08;
     this.rig.add(this.torso);
 
-    // brute shoulder pads
     if (this.kind === 'brute') {
       const padMat = this.lam('#2e2a22');
       for (const s of [-1, 1]) {
@@ -127,7 +117,6 @@ export class Zombie {
       }
     }
 
-    // head with face on +Z
     const side = this.lam('#ffffff', skinTex);
     const faceMat = this.lam('#ffffff', faceTex);
     this.head = new THREE.Mesh(GEO.head, [side, side, side, side, faceMat, side]);
@@ -135,7 +124,6 @@ export class Zombie {
     this.head.position.y = 1.58;
     this.rig.add(this.head);
 
-    // glowing eyes — readability in dark zones
     this.eyeMat = new THREE.MeshBasicMaterial({ color: this.kind === 'brute' ? 0xff3b1f : 0xffc44d, transparent: true });
     for (const s of [-1, 1]) {
       const e = new THREE.Mesh(GEO.eye, this.eyeMat);
@@ -143,14 +131,12 @@ export class Zombie {
       this.rig.add(e);
     }
 
-    // arms (shoulder pivots, reaching forward)
     const mkArm = (s: number): THREE.Group => {
       const g = new THREE.Group();
       g.position.set(s * 0.33, 1.34, 0);
       const mesh = new THREE.Mesh(GEO.arm, s < 0 ? cloth : cloth);
       mesh.position.z = 0.02;
       g.add(mesh);
-      // claw hand
       const hand = new THREE.Mesh(GEO.eye, skin);
       hand.scale.setScalar(2.2);
       hand.position.set(0, -0.6, 0.03);
@@ -163,7 +149,6 @@ export class Zombie {
     this.armL = mkArm(-1);
     this.armR = mkArm(1);
 
-    // legs (hip pivots)
     const mkLeg = (s: number): THREE.Group => {
       const g = new THREE.Group();
       g.position.set(s * 0.14, 0.76, 0);
@@ -174,10 +159,9 @@ export class Zombie {
     this.legL = mkLeg(-1);
     this.legR = mkLeg(1);
 
-    // per-kind silhouette
     if (this.kind === 'runner') {
       this.rig.scale.set(0.9, 0.92, 0.9);
-      this.torso.rotation.x = 0.18; // hungry lean
+      this.torso.rotation.x = 0.18;
     } else if (this.kind === 'brute') {
       this.rig.scale.set(1.28, 1.3, 1.28);
     }
@@ -185,10 +169,8 @@ export class Zombie {
     void skin;
   }
 
-  /** Swap procedural rig for a real CC0 GLB skin (Quaternius pack). */
   loadGLB(buffer: ArrayBuffer): void {
     void buffer;
-    // parsed lazily by ZombiePool.loadModels via GLTFLoader; see below.
   }
 
   attachGLB(root: THREE.Group): void {
@@ -235,7 +217,6 @@ export class Zombie {
     if (this.dying) {
       this.dieT += dt;
       const t = Math.min(1, this.dieT / 0.8);
-      // collapse backward + sink + fade
       this.group.rotation.x = -t * 1.35;
       this.group.position.y = -t * this.h * 0.55;
       const op = 1 - t;
@@ -249,7 +230,6 @@ export class Zombie {
     }
     if (!this.alive) return;
 
-    // hit flash decay
     if (this.flashT > 0) {
       this.flashT -= dt;
       if (this.flashT <= 0) {
@@ -261,14 +241,12 @@ export class Zombie {
     toPlayer.y = 0;
     const dist = toPlayer.length();
 
-    // ---- Growls ----
     this.growlTimer -= dt;
     if (this.growlTimer <= 0) {
       this.growlTimer = randRange(3, 9);
       if (dist < 24) onGrowl(this, dist);
     }
 
-    // ---- Movement: flow field far, direct chase near ----
     const cell = level.data.cell;
     const cx = Math.floor(this.pos.x / cell);
     const cz = Math.floor(this.pos.z / cell);
@@ -290,7 +268,6 @@ export class Zombie {
         dirX = direct.x;
         dirZ = direct.z;
       } else {
-        // find lowest-distance neighbor
         let best = d0;
         let bx = 0;
         let bz = 0;
@@ -311,16 +288,13 @@ export class Zombie {
       }
     }
 
-    // wall slide: test the next position
     const nx = this.pos.x + dirX * this.speed * dt;
     const nz = this.pos.z + dirZ * this.speed * dt;
     if (!this.blocked(nx, this.pos.z, level)) this.pos.x = nx;
     if (!this.blocked(this.pos.x, nz, level)) this.pos.z = nz;
 
-    // ---- Face player (Y billboard on the whole rig) ----
     this.group.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
 
-    // ---- Procedural shamble (Quaternius-style loop, code-driven) ----
     this.walkPhase += dt * (2.2 + this.speed * 2.4);
     const sw = Math.sin(this.walkPhase);
     const sw2 = Math.sin(this.walkPhase + Math.PI);
@@ -336,7 +310,6 @@ export class Zombie {
     this.head.rotation.x = Math.abs(sw) * 0.08;
     this.group.position.set(this.pos.x, Math.abs(sw) * 0.04, this.pos.z);
 
-    // ---- Attack ----
     this.attackTimer -= dt;
     const inRange = dist < CFG.zombie.attackRange + this.radius;
     if (inRange && this.windup < 0 && this.attackTimer <= 0) {
@@ -362,11 +335,9 @@ export class Zombie {
     return level.data.grid[cz * level.data.w + cx] === SOLID;
   }
 
-  /** Apply damage. Returns true if this hit killed it. */
   hit(dmg: number): boolean {
     if (!this.alive || this.dying) return false;
     this.health -= dmg;
-    // emissive hit flash (works on Lambert rig + GLB skins)
     for (const m of this.mats) m.emissive.setRGB(1.4, 0.35, 0.2);
     this.flashT = 0.09;
     if (this.glbRoot) {
@@ -401,7 +372,6 @@ export class Zombie {
   }
 }
 
-/** Pool of zombies reused across waves (avoids GC churn). */
 export class ZombiePool {
   items: Zombie[] = [];
   private scene: THREE.Scene;
@@ -417,11 +387,6 @@ export class ZombiePool {
     }
   }
 
-  /**
-   * Optional CC0 upgrade: if public/models/zombies/*.glb exist (e.g. Quaternius
-   * "Zombie Apocalypse Kit" retargeted to shambler/runner/brute), skin the pool
-   * with them. Missing files → procedural rig stays. Never throws.
-   */
   async loadModels(getModel: (key: string) => ArrayBuffer | undefined): Promise<void> {
     const loader = new GLTFLoader();
     const parse = (buf: ArrayBuffer): Promise<THREE.Group> =>
@@ -446,14 +411,12 @@ export class ZombiePool {
             mesh.frustumCulled = false;
           }
         });
-        // normalize height to ~1.7m
         const box = new THREE.Box3().setFromObject(root);
         const size = box.getSize(new THREE.Vector3());
         const s = 1.7 / Math.max(size.y, 0.001);
         root.scale.setScalar(s);
         z.attachGLB(root);
       } catch {
-        // keep procedural rig
       }
     }
   }
@@ -471,7 +434,6 @@ export class ZombiePool {
     }
   }
 
-  /** All currently visible + living zombies. */
   get active(): Zombie[] {
     return this.items.filter((z) => z.group.visible && z.alive && !z.dying);
   }

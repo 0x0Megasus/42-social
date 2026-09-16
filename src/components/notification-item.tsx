@@ -33,7 +33,6 @@ export function NotificationItem({ n }: { n: NotifItem }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const handle = n.from?.login42 ?? n.from?.name ?? null;
-  // Container goes to the post (or the follower's profile for follows).
   const target = n.postId
     ? `/?focus=${n.postId}`
     : handle

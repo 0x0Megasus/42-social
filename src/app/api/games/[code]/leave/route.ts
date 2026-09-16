@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { leaveRoom } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 
-// POST /api/games/[code]/leave -> forfeit (winner = the other player)
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }

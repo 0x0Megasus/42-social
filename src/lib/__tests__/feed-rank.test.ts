@@ -110,7 +110,6 @@ describe("feed-rank (Facebook-style pipeline)", () => {
       now
     );
     const ids = ranked.map((p) => p.id);
-    // same author never back-to-back when avoidable
     for (let i = 1; i < ids.length; i++) {
       const prev = ranked.find((p) => p.id === ids[i - 1])!;
       const cur = ranked.find((p) => p.id === ids[i])!;

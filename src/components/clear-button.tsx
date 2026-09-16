@@ -18,7 +18,6 @@ export function ClearButton() {
       setArmed(false);
       router.refresh();
     } catch {
-      /* keep armed so the user can retry */
     } finally {
       setBusy(false);
     }

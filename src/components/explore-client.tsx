@@ -30,9 +30,6 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
   const [searching, setSearching] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Server-side prefix search (debounced): the full directory never ships
-  // to the client. Empty query falls back to the server-rendered page.
-  // Driven from the input handler (not an effect) to keep renders pure.
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -59,7 +56,6 @@ export function ExploreClient({ users }: { users: ExploreUser[] }) {
         const d = await res.json();
         if (Array.isArray(d.users)) setResults(d.users);
       } catch {
-        /* keep previous results */
       } finally {
         setSearching(false);
       }

@@ -1,13 +1,5 @@
 "use client";
 
-// Browser media pipeline: compress → quota-check → direct-to-Storage
-// upload → report. Uploads NEVER transit Next.js (no server body limits,
-// no server bandwidth burn) — RTDB stores only tiny metadata afterwards.
-//
-// Budgets (free-tier friendly):
-// - images: longest edge ≤1600px, WebP q0.85 (~100–300 KB) + 320px thumb
-// - video: ≤60 s / ≤50 MB, 480p pass only when WebCodecs exists (else orig)
-// - voice: Opus ~32 kbps (~200 KB/min), ≤3 min
 
 export const MEDIA_CAPS = {
   imageMaxEdge: 1600,
@@ -21,8 +13,6 @@ export const MEDIA_CAPS = {
   voiceMaxBytes: 8 * 1024 * 1024,
 } as const;
 
-// Mirrors MediaKind in lib/db.ts (duplicated, not imported — db.ts pulls
-// firebase-admin, which must never enter the browser bundle).
 export type MediaKind = "image" | "video" | "voice";
 
 export type MediaConfig = {
@@ -35,8 +25,6 @@ export type MediaStatus = { ready: boolean; missing: string[] };
 
 let configCache: MediaConfig | null | undefined;
 
-// Runtime config from the server (fresh per page load — no rebuild needed
-// after configuring env, and failures name exactly what's missing).
 async function getMediaConfig(): Promise<MediaConfig | null> {
   if (configCache !== undefined) return configCache;
   try {
@@ -72,8 +60,6 @@ export function formatDuration(sec: number): string {
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-
-// ---- image compression (canvas, zero deps) ----
 
 export type CompressedImage = {
   blob: Blob;
@@ -119,14 +105,12 @@ export async function compressImage(file: File): Promise<CompressedImage> {
       el.onerror = () => reject(new Error("decode-failed"));
       el.src = url;
     });
-    // Prefer WebP; fall back to the source type when unsupported.
     let full: { blob: Blob; w: number; h: number };
     try {
       full = await drawTo(img, MEDIA_CAPS.imageMaxEdge, "image/webp", MEDIA_CAPS.imageQuality);
     } catch {
       full = await drawTo(img, MEDIA_CAPS.imageMaxEdge, file.type || "image/jpeg", 0.9);
     }
-    // GIFs stay animated: never transcode, only pass through if small.
     if (file.type === "image/gif") {
       if (file.size > MEDIA_CAPS.imageMaxBytes) throw new Error("too-large");
       const thumb = await drawTo(img, MEDIA_CAPS.thumbEdge, "image/webp", 0.8).catch(() => null);
@@ -144,8 +128,6 @@ export async function compressImage(file: File): Promise<CompressedImage> {
     URL.revokeObjectURL(url);
   }
 }
-
-// ---- video validation + thumbnail ----
 
 export async function probeVideo(file: File): Promise<{
   ok: boolean;
@@ -171,7 +153,6 @@ export async function probeVideo(file: File): Promise<{
       return { ok: false, error: `over ${MEDIA_CAPS.videoMaxSeconds}s` };
     return { ok: true, duration };
   } catch {
-    // Undecodable here ≠ unplayable elsewhere — allow upload, server caps size.
     return { ok: true, duration: undefined };
   } finally {
     URL.revokeObjectURL(url);
@@ -202,7 +183,6 @@ export async function captureVideoThumb(
         };
       });
     } catch {
-      /* first frame is fine */
     }
     const scale = Math.min(
       1,
@@ -225,8 +205,6 @@ export async function captureVideoThumb(
   }
 }
 
-// ---- voice helpers ----
-
 export function pickVoiceMime(): string {
   if (typeof MediaRecorder === "undefined") return "";
   const candidates = [
@@ -238,7 +216,6 @@ export function pickVoiceMime(): string {
     try {
       if (MediaRecorder.isTypeSupported(c)) return c;
     } catch {
-      /* try next */
     }
   }
   return "";
@@ -273,8 +250,6 @@ export async function peaksFromBlob(blob: Blob, bars = 32): Promise<number[]> {
   }
 }
 
-// ---- upload (direct browser → Cloudinary unsigned preset, XHR progress) ----
-
 export type UploadedFile = {
   url: string;
   publicId: string;
@@ -292,8 +267,6 @@ export async function uploadFile(
 ): Promise<UploadedFile> {
   const kind: MediaKind =
     scope === "posts" ? "image" : scope === "videos" ? "video" : "voice";
-  // Endpoint + preset come from the live server config (never build-time
-  // env), so misconfiguration surfaces as a named error, not silence.
   const cfg = await getMediaConfig();
   const preset = kind === "image" ? cfg?.presetImage : cfg?.presetMedia;
   if (!cfg?.cloud || !preset) {
@@ -304,8 +277,6 @@ export async function uploadFile(
   const stamp = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 8);
   const publicId = `42social/${uid}/${stamp}_${rand}`;
-  // Server quota gate first (also registers the pending marker the orphan
-  // sweep uses if this tab dies mid-upload).
   const quota = await checkQuota(kind, file.size, publicId);
   if (!quota.ok) throw new Error(quota.error ?? "quota");
   const form = new FormData();
@@ -356,8 +327,6 @@ export async function uploadFile(
     duration: num(res.duration),
   };
 }
-
-// ---- server quota gate + completion report ----
 
 export async function checkQuota(
   kind: MediaKind,

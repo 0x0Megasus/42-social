@@ -9,18 +9,11 @@ import { ensureCountersBackfilled, bumpUserCounter } from "@/lib/counters";
 import { isCloudinaryUrl } from "@/lib/cloudinary";
 import { after } from "next/server";
 
-// GET /api/posts?limit&offset -> { posts, hasMore }
-// One ranked feed (Facebook-style pipeline in lib/feed-rank.ts): recency
-// is a signal, not a separate tab. Short private cache: browsers serve
-// the 10s poll + StrictMode double-fetch from cache while mutations
-// revalidate explicitly.
 export async function GET(req: Request) {
   const session = await getSession();
   const q = new URL(req.url).searchParams;
   const limit = Math.min(Math.max(Number(q.get("limit")) || 20, 1), 50);
   const offset = Math.max(Number(q.get("offset")) || 0, 0);
-  // Self-healing counters for pre-denormalization rows — runs after the
-  // response so it never slows the feed.
   after(() => ensureCountersBackfilled());
   const page = await getFeedPage({
     meId: session?.sub ?? null,
@@ -57,8 +50,6 @@ export async function POST(req: Request) {
     } | null;
   };
   const text = clean(body, 500);
-  // Text, image, or video required (media-only posts allowed).
-  // Media URLs must be our own Cloudinary deliveries (no hotlinking).
   const cleanUrl = (u: unknown): string | null =>
     typeof u === "string" && isCloudinaryUrl(u) && u.length <= 2000
       ? u
@@ -80,9 +71,6 @@ export async function POST(req: Request) {
       typeof v === "number" && Number.isFinite(v) ? v : null;
     const duration = num(video.duration);
     const bytes = num(video.bytes);
-    // Aligned with the client probe (media.ts: 60s/50MB, +1s tolerance):
-    // anything the composer lets through must pass here, and anything
-    // over the caps is rejected even when the client is bypassed.
     if (
       (duration !== null && (duration < 0 || duration > 61)) ||
       (bytes !== null && (bytes < 0 || bytes > 50 * 1024 * 1024))
@@ -106,7 +94,6 @@ export async function POST(req: Request) {
     v <= 10000
       ? Math.round(v)
       : null;
-  // public_ids must live under the caller's prefix (destroy rights).
   const cleanIds =
     Array.isArray(cloudIds)
       ? cloudIds.filter(
@@ -116,7 +103,6 @@ export async function POST(req: Request) {
         ).slice(0, 4)
       : [];
 
-  // Max 5 posts / 5 min, no repeat text / 5 min.
   const vol = rateLimit(`post-vol:${session.sub}`, 5, 300_000);
   if (!vol.ok)
     return NextResponse.json(
@@ -155,11 +141,7 @@ export async function POST(req: Request) {
     likesCount: 0,
     commentsCount: 0,
   });
-  // Dual-write the O(1) map row at creation (not just on edit): single-post
-  // reads prefer /posts-by-id, and the map must never lag the array.
   await writePostById(post.id, post).catch(() => null);
-  // Author post counter (exact recompute would scan /posts; a +1 leaf bump
-  // is exact here since we just added exactly one).
   await bumpUserCounter(session.sub, "postsCount", 1).catch(() => null);
   return NextResponse.json({ post }, { status: 201 });
 }

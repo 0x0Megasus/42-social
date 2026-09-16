@@ -1,6 +1,5 @@
 import { NotificationRowSkeleton } from "@/components/skeletons";
 
-// Mirrors Notifications: header row (title + clear slot) → notification rows.
 export default function Loading() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading notifications">

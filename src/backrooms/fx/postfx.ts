@@ -14,7 +14,6 @@ import {
 } from 'postprocessing';
 import * as THREE from 'three';
 
-/** The VHS/horror grade: bloom on lamps, grain, scanlines, vignette, chroma fringe. */
 export class PostFX {
   composer: EffectComposer;
   private chroma: ChromaticAberrationEffect;
@@ -55,21 +54,18 @@ export class PostFX {
     );
   }
 
-  /** Damage/hurt red push 0..1 */
   setHurt(v: number): void {
     this.chroma.offset.set(0.0006 + v * 0.004, 0.0006 + v * 0.004);
     this.noise.blendMode.opacity.value = 0.16 + v * 0.25;
     this.vignette.darkness = Math.min(1.6, 0.85 + v * 0.8);
   }
 
-  /** Sanity/tension 0..1 — raises grain and chroma creep. */
   setTension(v: number): void {
     this.noise.blendMode.opacity.value = 0.16 + v * 0.1;
     this.chroma.offset.set(0.0006 + v * 0.0015, 0.0006 + v * 0.0015);
   }
 
   update(_dt: number): void {
-    // reserved for animated uniforms
   }
 
   setSize(w: number, h: number): void {

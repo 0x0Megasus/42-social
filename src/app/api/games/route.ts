@@ -4,8 +4,6 @@ import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import type { GameKind } from "@/lib/games/types";
 
-// Offered in the lobby. "number" + "twentyone" are retired: existing rooms
-// stay playable, but no new rooms can be created for them.
 const KINDS: GameKind[] = [
   "tictactoe",
   "connectfour",
@@ -14,8 +12,6 @@ const KINDS: GameKind[] = [
   "backrooms",
 ];
 
-// POST /api/games { kind, vsBot?, mode? } -> { room }
-// Backrooms takes mode: "solo" | "duel" instead of vsBot (no bot for FPS).
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session)

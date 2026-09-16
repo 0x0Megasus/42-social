@@ -19,8 +19,6 @@ import { clean } from "@/lib/sanitize";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// GET /api/posts/[id] — requires session, returns enriched post.
-// O(1) map read + two tiny indexed lookups (likes, liked-by-me).
 export async function GET(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -38,7 +36,6 @@ export async function GET(_req: Request, { params }: Ctx) {
       ? Object.values(likeMap).filter(Boolean).length
       : 0;
   let liked = myLike != null;
-  // Legacy union: pre-map rows still count until mirrored.
   const legacy = await queryCollectionEntries("likes", {
     orderBy: "postId",
     equalTo: id,
@@ -79,10 +76,6 @@ async function ownPost(
   if (!p || p.authorId !== me || p.deleted) return null;
   const next: Post = { ...p };
   mutate(next);
-  // Dual-write: map row (O(1) future reads) + array leaf for legacy scans.
-  // The array write MUST use the real storage key: readCollection compacts
-  // away delete-tombstones, so a compacted findIndex points at the wrong
-  // slot (resurrecting a ghost row or corrupting a neighbor).
   await writePostById(postId, next);
   const entries = await readCollectionEntries("posts");
   const hit = entries.find(({ row }) => row.id === postId);
@@ -112,7 +105,6 @@ async function ownPost(
   };
 }
 
-// PATCH /api/posts/[id] { body } — edit own post. Readers see "Edited".
 export async function PATCH(req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -137,9 +129,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   return NextResponse.json({ post });
 }
 
-// DELETE /api/posts/[id] — hard delete: map row + array tombstone removed,
-// engagement subtrees dropped, legacy rows nulled. Notifications referencing
-// it are kept as history (feed focus guard explains the tombstone).
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await getSession();
   if (!session)
@@ -169,27 +158,17 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const paths: Record<string, unknown> = {
     [`/posts-by-id/${id}`]: null,
     [`/likes-by-post/${id}`]: null,
-    // Pinned announcements leave the feed index too.
     [`/pinned-posts/${id}`]: null,
   };
-  // Storage-key tombstone: a compacted findIndex would null the wrong slot
-  // once earlier deletes left holes behind.
   if (hit) paths[`/posts/${hit.key}`] = null;
   for (const { key } of likeEntries) paths[`/likes/${key}`] = null;
   for (const { key } of commentEntries) paths[`/comments/${key}`] = null;
-  // Mirror-clean each liker's by-user leaf (exact, from the map we drop).
   if (likers && typeof likers === "object") {
     for (const liker of Object.keys(likers))
       paths[`/likes-by-user/${liker}/${id}`] = null;
   }
   await updatePaths(paths);
-  // Recompute the author's post counter exactly: hard-deleting a row used
-  // to leave postsCount untouched, so profile/explore kept showing deleted
-  // posts. Exact recount also heals any prior drift. Note p.authorId (not
-  // the caller) — support can delete other users' posts.
   await recountUserPosts(p.authorId).catch(() => null);
-  // Reclaim Cloudinary bytes (best-effort, after RTDB). public_ids are
-  // authoritative; URL-derived ids cover rows written before cloudIds.
   void destroyAssets([
     ...(p.cloudIds ?? []),
     publicIdFromUrl(p.image ?? ""),

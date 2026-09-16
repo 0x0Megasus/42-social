@@ -35,7 +35,6 @@ type Convo = {
   unread: number;
 };
 
-// Live inbox: polls so new messages + previews appear without navigation.
 export function DmList({ meId }: { meId: string }) {
   const router = useRouter();
   const [convos, setConvos] = useState<Convo[]>([]);
@@ -53,7 +52,6 @@ export function DmList({ meId }: { meId: string }) {
       const d = await res.json();
       if (Array.isArray(d.conversations)) setConvos(d.conversations);
     } catch {
-      /* offline: keep current list */
     }
   }, [router]);
 

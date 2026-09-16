@@ -1,5 +1,3 @@
-// Tiny synthesized sound engine — zero deps, zero audio files.
-// All sounds are short oscillator envelopes (cool, not annoying).
 
 const MUTE_KEY = "42social-muted";
 
@@ -15,7 +13,6 @@ export function setMuted(m: boolean): void {
   try {
     localStorage.setItem(MUTE_KEY, m ? "1" : "0");
   } catch {
-    /* private mode */
   }
 }
 
@@ -38,7 +35,6 @@ function ac(): AudioContext | null {
   return ctx;
 }
 
-// Browsers suspend audio until a user gesture — call on first interaction.
 export function unlockAudio(): void {
   const c = ac();
   if (c && c.state === "suspended") void c.resume().catch(() => null);
@@ -70,11 +66,6 @@ function tone(c: AudioContext, t: Tone): void {
   o.stop(start + t.dur + 0.05);
 }
 
-// Sound engine: downloaded files first, synthesized fallback if missing.
-// Drop your files at (exact names, lowercase):
-//   public/sounds/message.mp3      -> incoming DM pop
-//   public/sounds/notification.mp3 -> likes / comments / follows chime
-// MP3 works in every browser. Keep each file short (<1s) and small (<100KB).
 
 const MESSAGE_SRC = "/sounds/message.mp3";
 const NOTIF_SRC = "/sounds/notification.mp3";
@@ -121,17 +112,15 @@ function synthReady(): AudioContext | null {
   return c;
 }
 
-/** Bright two-tone chime for likes / comments / follows. */
 export function playNotification(): void {
   playWithFallback(NOTIF_SRC, () => {
     const c = synthReady();
     if (!c) return;
-    tone(c, { freq: 987.77, at: 0, dur: 0.16, vol: 0.1 }); // B5
-    tone(c, { freq: 1318.5, at: 0.11, dur: 0.32, vol: 0.12 }); // E6
+    tone(c, { freq: 987.77, at: 0, dur: 0.16, vol: 0.1 });
+    tone(c, { freq: 1318.5, at: 0.11, dur: 0.32, vol: 0.12 });
   });
 }
 
-/** Soft rising pop for incoming DMs. */
 export function playMessage(): void {
   playWithFallback(MESSAGE_SRC, () => {
     const c = synthReady();
@@ -140,14 +129,12 @@ export function playMessage(): void {
   });
 }
 
-/** Tiny blip for UI feedback (unmute test). */
 export function playBlip(): void {
   const c = synthReady();
   if (!c || isMuted()) return;
   tone(c, { freq: 740, at: 0, dur: 0.09, vol: 0.08 });
 }
 
-/** Short click for placing a piece. */
 export function playMove(): void {
   if (isMuted()) return;
   const c = synthReady();
@@ -155,7 +142,6 @@ export function playMove(): void {
   tone(c, { freq: 1150, at: 0, dur: 0.06, vol: 0.07, type: "triangle" });
 }
 
-/** Ascending arpeggio for winning. */
 export function playWin(): void {
   if (isMuted()) return;
   const c = synthReady();
@@ -165,7 +151,6 @@ export function playWin(): void {
   tone(c, { freq: 783.99, at: 0.24, dur: 0.3, vol: 0.12 });
 }
 
-/** Low wooden thud for a capture. */
 export function playCapture(): void {
   if (isMuted()) return;
   const c = synthReady();
@@ -173,7 +158,6 @@ export function playCapture(): void {
   tone(c, { freq: 220, freqEnd: 110, at: 0, dur: 0.12, vol: 0.14, type: "triangle" });
 }
 
-/** Sharp double-tick for check. */
 export function playCheck(): void {
   if (isMuted()) return;
   const c = synthReady();
@@ -182,7 +166,6 @@ export function playCheck(): void {
   tone(c, { freq: 1320, at: 0.11, dur: 0.1, vol: 0.08 });
 }
 
-/** Descending tone for losing. */
 export function playLose(): void {
   if (isMuted()) return;
   const c = synthReady();

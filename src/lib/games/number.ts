@@ -1,4 +1,3 @@
-// Pure Number Duel engine — guess the 1-100 secret, fewest tries wins.
 export type Heat = "exact" | "scorching" | "hot" | "warm" | "cold";
 
 export type NumberGuess = { by: string; n: number; hint: Heat };

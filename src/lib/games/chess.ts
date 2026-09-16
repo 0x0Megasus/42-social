@@ -1,6 +1,3 @@
-// Chess board state: FEN string (RTDB-safe, no nulls) + SAN history.
-// Clock: server-computed ms remaining after every move (w/b), msAt = the
-// server Date.now() the clock was computed at, for client-side display.
 export type ChessBoard = {
   fen: string;
   history: string[];
@@ -20,12 +17,6 @@ export function freshChess(): ChessBoard {
 
 export const CHESS_CLOCK_START_MS = 10 * 60 * 1000; // 10 minutes per side
 
-/**
- * Advance the clock to `now` and charge the mover. Pure: takes/returns data.
- * - First call initializes both clocks and starts charging White.
- * - The side to move is charged for the time since `msAt`.
- * - Returns the new clock (not yet applied to the board).
- */
 export function tickChessClock(
   clock: ChessBoard["clock"],
   now: number,

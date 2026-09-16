@@ -1,6 +1,5 @@
 import { DmRowSkeleton } from "@/components/skeletons";
 
-// Mirrors DmList: title → conversation rows → "New chat" section.
 export default function Loading() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading messages">

@@ -13,9 +13,6 @@ function otherOf(c: { aId: string; bId: string }, me: string): string {
   return c.aId === me ? c.bId : c.aId;
 }
 
-// GET /api/dm -> my conversations (peer, last message, unread).
-// Conversations resolve via two indexed queries; each thread preview reads
-// only its own tail — O(my convos), never O(all messages).
 export async function GET() {
   const session = await getSession();
   if (!session)
@@ -46,8 +43,6 @@ export async function GET() {
           limit: 100,
         }).catch(() => []),
       ]);
-      // Deleted messages are tombstones: skip them for the preview and
-      // unread count so "delete" really makes them disappear in the list.
       const live = msgs
         .filter((m) => !m.deleted)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -88,9 +83,6 @@ export async function GET() {
   );
 }
 
-// POST /api/dm { userId } -> get-or-create 1:1 conversation.
-// Deterministic key dm_{min}_{max} + leaf transaction: atomic, O(1),
-// no collection scan. Legacy random ids keep working (lookup by id).
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session)
@@ -108,8 +100,6 @@ export async function POST(req: Request) {
     `/conversations/${key}`
   ).catch(() => null);
   if (existing) return NextResponse.json({ id: key });
-  // Legacy random-id rows predate deterministic keys — one scan per NEW
-  // pair reuses them instead of forking a duplicate thread.
   const convos = await readCollection("conversations");
   const legacy = convos.find((c) => c.aId === x && c.bId === y);
   if (legacy) return NextResponse.json({ id: legacy.id });

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Smile } from "lucide-react";
 
-// Zero-dep picker: 24 essentials, no scroll — fits any screen.
 const EMOJIS = [
   "😂", "❤️", "🔥", "💯", "😭", "😅", "👀", "👏",
   "🙌", "💀", "😎", "🤝", "👍", "🎉", "🚀", "💡",
@@ -67,7 +66,6 @@ export function EmojiPicker({ onEmoji }: { onEmoji: (e: string) => void }) {
   );
 }
 
-// Kick-style username color: stable hash -> hue.
 export function kickColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;

@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 
 export type Presence = { online: boolean; lastSeen: string | null };
 
-// Shared cache: one poll loop serves every StatusDot on the page.
 const cache = new Map<string, Presence>();
 const listeners = new Set<() => void>();
 const wanted = new Set<string>();
@@ -29,7 +28,6 @@ async function poll() {
       notify();
     }
   } catch {
-    /* keep stale dots */
   } finally {
     inflight = false;
   }
@@ -56,7 +54,6 @@ export function usePresence(userId: string | null | undefined): Presence | null 
   return userId ? (cache.get(userId) ?? null) : null;
 }
 
-// Heartbeat: ping while any tab open; beacon offline when the LAST tab closes.
 export function PresenceHeartbeat() {
   useEffect(() => {
     let alive = true;
@@ -84,7 +81,6 @@ export function PresenceHeartbeat() {
         try {
           navigator.sendBeacon("/api/presence/offline");
         } catch {
-          /* offline ping failed */
         }
       }
     };
@@ -119,7 +115,6 @@ export function StatusDot({
   );
 }
 
-// Live dot for a user id: uses initial server value until first poll resolves.
 export function LiveDot({
   userId,
   initialOnline,

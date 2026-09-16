@@ -1,7 +1,5 @@
 "use client";
 
-// fetch() with a hard timeout so loading states can never stick forever.
-// Throws DOMException (AbortError) on timeout — callers show a toast.
 export const API_TIMEOUT_MS = 20_000;
 
 export class ApiTimeoutError extends Error {

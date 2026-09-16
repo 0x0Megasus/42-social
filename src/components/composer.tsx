@@ -45,8 +45,6 @@ export function Composer({
   const [attach, setAttach] = useState<Attachment | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
-  // Media availability (server config): the attach button only appears
-  // when uploads actually work — no dead buttons, no scary errors.
   const [mediaOn, setMediaOn] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -123,9 +121,6 @@ export function Composer({
     setBusy(true);
     setProgress(null);
     try {
-      // Upload first (direct browser → Cloudinary), then create the post
-      // with URLs. Thumbnails are derived transformation URLs — no second
-      // upload, no extra storage.
       let image: string | null = null;
       let thumb: string | null = null;
       let imgW: number | null = null;
@@ -173,7 +168,6 @@ export function Composer({
       const d = await res.json();
       setBody("");
       clearAttach();
-      // instant insert: show the post immediately, no waiting for refresh
       onPosted?.({
         ...d.post,
         author,
@@ -212,7 +206,6 @@ export function Composer({
         value={body}
         onChange={(e) => setBody(takeGraphemes(e.target.value, 500))}
         onPaste={(e) => {
-          // Pasted screenshots/photos attach directly — no file dialog.
           const file = [...(e.clipboardData?.files ?? [])].find((f) =>
             /^(image|video)\//.test(f.type)
           );
@@ -229,9 +222,6 @@ export function Composer({
       {attach && (
         <div
           className="relative mt-3 flex items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-black"
-          // Reserve the compressed image's ratio so the preview never
-          // jumps or letterboxes wrong; clamped so portraits stay compact.
-          // Media is always contained (never cropped) like FB/X.
           style={
             attach.kind === "image"
               ? { aspectRatio: `${attach.w} / ${attach.h}`, maxHeight: 320 }

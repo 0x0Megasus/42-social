@@ -1,4 +1,3 @@
-/** Asset pipeline: real CC0 sounds (.opus) + GLB gun models, with graceful fallbacks. */
 
 export type AssetBuffers = Record<string, AudioBuffer>;
 export type AssetModels = Record<string, ArrayBuffer>;
@@ -42,10 +41,6 @@ const MODEL_MANIFEST: Record<string, string> = {
   pistol: '/backrooms/models/guns/pistol.glb',
   smg: '/backrooms/models/guns/smg.glb',
   ar: '/backrooms/models/guns/ar.glb',
-  // Optional CC0 zombie skins — drop Quaternius "Zombie Apocalypse Kit" GLBs
-  // (renamed to zombie_shambler.glb / zombie_runner.glb / zombie_brute.glb)
-  // into public/models/zombies/. Missing files are fine: the game keeps its
-  // procedural low-poly rig.
   zombie_shambler: '/backrooms/models/zombies/zombie_shambler.glb',
   zombie_runner: '/backrooms/models/zombies/zombie_runner.glb',
   zombie_brute: '/backrooms/models/zombies/zombie_brute.glb',
@@ -76,7 +71,6 @@ export class AssetStore {
       onProgress(done, total, label);
     };
 
-    // Sounds — fetch + decode; tolerate individual failures
     await Promise.all(
       soundEntries.map(async ([key, url]) => {
         try {
@@ -85,13 +79,11 @@ export class AssetStore {
           const ab = await res.arrayBuffer();
           this.buffers[key] = await ctx.decodeAudioData(ab);
         } catch {
-          // missing file — synth fallback covers it
         }
         step(key);
       }),
     );
 
-    // Models — raw ArrayBuffers for GLTFLoader.parse
     await Promise.all(
       modelEntries.map(async ([key, url]) => {
         try {
@@ -99,7 +91,6 @@ export class AssetStore {
           if (!res.ok) throw new Error(String(res.status));
           this.models[key] = await res.arrayBuffer();
         } catch {
-          // missing file — box fallback covers it
         }
         step(key);
       }),
@@ -109,7 +100,6 @@ export class AssetStore {
     this.modelsOk = Object.keys(this.models).length === modelEntries.length;
   }
 
-  /** Pick a random variant buffer, e.g. pick('smg_fire', 4) → smg_fire1..4 */
   pick(prefix: string, variants: number): AudioBuffer | undefined {
     if (variants <= 1) return this.buffers[prefix];
     const n = 1 + Math.floor(Math.random() * variants);

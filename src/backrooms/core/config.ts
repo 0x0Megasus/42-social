@@ -1,4 +1,3 @@
-/** Global tuning constants. Units: meters, seconds. */
 export const CFG = {
   world: {
     cell: 4, // meters per grid cell

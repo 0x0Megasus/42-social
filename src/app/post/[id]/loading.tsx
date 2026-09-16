@@ -1,6 +1,5 @@
 import { PostCardSkeleton } from "@/components/skeletons";
 
-// Mirrors PostPage: back link → single open post card.
 export default function Loading() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading post">

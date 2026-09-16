@@ -14,10 +14,6 @@ export type BackroomsBoardPayload = {
   results: Record<string, RunResult> | null;
 };
 
-// Embeds the Backrooms FPS in a 16:9 box. The Game instance is mounted once
-// per seed (parent remounts via key on rematch) and fully destroyed on
-// unmount. Loaded with next/dynamic ssr:false by the caller so three.js
-// never enters the server bundle or other pages.
 export function BackroomsView({
   payload,
   onSubmit,
@@ -28,14 +24,11 @@ export function BackroomsView({
   const hostRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState<number | null>(0);
   const [failed, setFailed] = useState(false);
-  // Pointer type never changes per device — read once, not in an effect.
-  // (ssr:false, so window is always available here.)
   const [coarse] = useState(
     () => window.matchMedia("(pointer: coarse)").matches
   );
   const [isFull, setIsFull] = useState(false);
 
-  // Latest-callback refs so the mount effect never re-runs on re-renders.
   const submitRef = useRef(onSubmit);
   const submittedRef = useRef(payload.submitted);
   useEffect(() => {
@@ -54,7 +47,7 @@ export function BackroomsView({
         game = new Game(host, {
           seed: payload.seed,
           onEnd: (r) => {
-            if (submittedRef.current) return; // practice runs stay local
+            if (submittedRef.current) return;
             submitRef.current({
               score: r.score,
               kills: r.kills,
@@ -77,7 +70,6 @@ export function BackroomsView({
       try {
         game?.dispose();
       } catch {
-        /* already gone */
       }
     };
   }, [coarse, payload.seed]);
@@ -95,7 +87,6 @@ export function BackroomsView({
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => null);
     } else {
-      // Fullscreen keeps the same container: resize event refits the canvas.
       void host.requestFullscreen?.().catch(() => null);
     }
   }

@@ -18,7 +18,6 @@ export default async function DmChat({
   const { id } = await params;
   const session = await getSession();
   if (!session) redirect("/login");
-  // One collection scan (conversations only — no messages) + cached users.
   const convos = await readCollection("conversations");
   const convo = convos.find((c) => c.id === id);
   if (!convo || (convo.aId !== session.sub && convo.bId !== session.sub)) {
@@ -36,8 +35,6 @@ export default async function DmChat({
     : false;
 
   return (
-    // Full-screen chat: fixed overlay above navbar/footer (they stay mounted,
-    // so presence heartbeats and unread badges keep working behind it).
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-50 dark:bg-black">
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200/70 px-3 py-2.5 dark:border-zinc-800">
         <Link

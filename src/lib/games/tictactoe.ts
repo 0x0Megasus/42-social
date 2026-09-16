@@ -1,4 +1,3 @@
-// Pure Tic-Tac-Toe engine — shared by client preview + server validation.
 export type TTTMark = "X" | "O";
 export type TTTBoard = (TTTMark | null)[];
 

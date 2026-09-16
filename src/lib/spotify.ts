@@ -1,9 +1,5 @@
 import type { UserSpotify } from "@/lib/db";
 
-// Spotify favorites without API keys or OAuth: users paste a track/artist
-// link, we parse the kind+id, and the public oEmbed endpoint
-// (https://open.spotify.com/oembed — no auth) fills in title/artist/cover
-// best-effort. Playback/display uses the official embed iframe.
 
 export type SpotifyKind = "track" | "artist";
 
@@ -14,11 +10,6 @@ function cleanId(id: string): string | null {
   return ID_RE.test(t) ? t : null;
 }
 
-// Accepts:
-//   https://open.spotify.com/track/{id}[?...]
-//   https://open.spotify.com/artist/{id}[?...]
-//   spotify:track:{id} / spotify:artist:{id}
-// Anything else (albums, playlists, episodes, page URLs) → null.
 export function parseSpotifyUrl(input: unknown): {
   kind: SpotifyKind;
   id: string;
@@ -55,19 +46,10 @@ export function embedSpotifyUrl(kind: SpotifyKind, id: string): string {
   return `https://open.spotify.com/embed/${kind}/${id}?utm_source=generator&theme=0`;
 }
 
-// Artist names from oEmbed carry no link (no API to resolve one), so the
-// card links them to Spotify search — first result is the artist.
 export function spotifySearchUrl(query: string): string {
   return `https://open.spotify.com/search/${encodeURIComponent(query.trim().slice(0, 100))}`;
 }
 
-// ---------------------------------------------------------------------------
-// In-app search via the Spotify Web API (Client Credentials flow —
-// server-to-server, no user OAuth). Needs SPOTIFY_CLIENT_ID +
-// SPOTIFY_CLIENT_SECRET in env (create an app at
-// developer.spotify.com/dashboard — no redirect URI needed for this flow).
-// Without them search is unavailable and the UI falls back to paste-a-link.
-// ---------------------------------------------------------------------------
 
 export type SpotifySearchResult = {
   kind: SpotifyKind;
@@ -127,11 +109,9 @@ function pickImage(images: unknown): string | null {
   const urls = (images as { url?: unknown }[])
     .map((i) => i?.url)
     .filter((u): u is string => typeof u === "string" && !!u);
-  // Spotify returns largest-first — the last one fits our 40px thumbs.
   return urls.length > 0 ? urls[urls.length - 1].slice(0, 500) : null;
 }
 
-// Pure API-response mapping (no I/O) — unit-tested with a fixture.
 export function mapSpotifySearch(json: unknown): SpotifySearchResult[] {
   const out: SpotifySearchResult[] = [];
   const root = (json ?? {}) as {
@@ -177,8 +157,6 @@ export function mapSpotifySearch(json: unknown): SpotifySearchResult[] {
   return out.slice(0, 10);
 }
 
-// Throws Error("unavailable") when unconfigured or Spotify is unreachable —
-// the route maps that to a status the UI handles with the paste fallback.
 export async function searchSpotify(query: string): Promise<SpotifySearchResult[]> {
   const q = query.trim().slice(0, 100);
   if (!q) return [];
@@ -209,7 +187,6 @@ async function fetchMeta(
     const res = await fetch(
       `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`,
       {
-        // Never hang profile saves on Spotify's latency.
         signal: AbortSignal.timeout(8000),
         headers: { Accept: "application/json" },
       }
@@ -219,8 +196,6 @@ async function fetchMeta(
     if (!d || typeof d !== "object") return empty;
     const str = (v: unknown): string | null =>
       typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : null;
-    // oEmbed title = track/artist name, author_name = artist (tracks) —
-    // for artists the author duplicates the name, so drop the echo.
     const title = str(d.title);
     let subtitle = str(d.author_name);
     if (subtitle && title && subtitle.toLowerCase() === title.toLowerCase())
@@ -231,8 +206,6 @@ async function fetchMeta(
   }
 }
 
-// Full resolution: null when the link isn't a track/artist, otherwise the
-// storable snapshot (metadata best-effort — id+url always resolve).
 export async function resolveSpotify(
   input: unknown
 ): Promise<UserSpotify | null> {

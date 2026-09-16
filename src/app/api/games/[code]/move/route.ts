@@ -3,7 +3,6 @@ import { playMove } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
-// POST /api/games/[code]/move { cell } or { col }
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ code: string }> }

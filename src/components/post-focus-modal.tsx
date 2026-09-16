@@ -6,9 +6,6 @@ import { PostCard, type FeedComment, type FeedPost } from "@/components/post-car
 import { PostCardSkeleton } from "@/components/skeletons";
 import { api } from "@/lib/api";
 
-// Focused post popup: the post + its comments isolated from the feed so
-// the reader can focus. Dismiss via X, backdrop click, or Escape.
-// Likes/edits flow back through onUpdate, so the feed stays in sync.
 export function PostFocusModal({
   post,
   meName,
@@ -24,8 +21,6 @@ export function PostFocusModal({
   onClose: () => void;
   viewerIsSupport?: boolean;
 }) {
-  // The feed card carries no thread — fetch it so the popup opens with
-  // comments visible instead of an empty "no comments" flash.
   const [thread, setThread] = useState<FeedComment[] | null>(null);
 
   useEffect(() => {

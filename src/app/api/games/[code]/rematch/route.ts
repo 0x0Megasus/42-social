@@ -3,7 +3,6 @@ import { rematch } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 
-// POST /api/games/[code]/rematch -> ready up; both ready starts a new round
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }

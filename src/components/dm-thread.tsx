@@ -44,7 +44,6 @@ type Msg = {
   } | null;
 };
 
-// Discord-inspired palette (own identity, same principles) — black chat theme
 const C = {
   bg: "bg-black",
   text: "text-[#DBDEE1]",
@@ -94,7 +93,6 @@ export function DmThread({
   const [hasNew, setHasNew] = useState(false);
   const [canOlder, setCanOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  // Voice preview up: give it the full composer row.
   const [voicing, setVoicing] = useState(false);
   const onPreviewing = useCallback((active: boolean) => setVoicing(active), []);
 
@@ -128,14 +126,11 @@ export function DmThread({
       const d = await res.json();
       const next = d.messages as Msg[];
       if (typeof d.hasMore === "boolean") setCanOlder(d.hasMore);
-      // incoming peer message sound (silent on first load)
       const last = next[next.length - 1];
       if (last && !last.mine && last.id !== lastPeerRef.current) {
         if (lastPeerRef.current !== "") playMessage();
         lastPeerRef.current = last.id;
       }
-      // auto-scroll only when the reader is already at the bottom —
-      // otherwise flag new arrivals and let them jump when ready
       const idsKey = next.map((m) => `${m.id}:${m.edited}:${m.deleted}`).join();
       if (lastIdsRef.current !== idsKey) {
         lastIdsRef.current = idsKey;
@@ -148,28 +143,22 @@ export function DmThread({
       setMsgs((prev) => {
         const serverIds = new Set(next.map((m) => m.id));
         const now = Date.now();
-        // keep only fresh optimistic temps (server echo replaces them on POST)
         const temps = prev.filter(
           (m) =>
             m.id.startsWith("tmp-") &&
             !serverIds.has(m.id) &&
             now - new Date(m.createdAt).getTime() < 15_000
         );
-        // Union-merge: keep previously loaded older history (polling only
-        // returns the latest page), server version wins on conflict.
         const byId = new Map(prev.map((m) => [m.id, m]));
         for (const m of next) byId.set(m.id, m);
         const merged = [...byId.values(), ...temps];
         merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        // Cap client memory; older pages refetch via offset.
         return merged.slice(-1000);
       });
     } catch {
-      /* polling failure: keep old messages */
     }
   }, [convoId, router]);
 
-  // Older history: offset pages prepended (deduped by id).
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return;
     setLoadingOlder(true);
@@ -192,14 +181,12 @@ export function DmThread({
           merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
           return merged;
         });
-        // Hold scroll position (content prepended above).
         requestAnimationFrame(() => {
           const el2 = scrollRef.current;
           if (el2) el2.scrollTop += el2.scrollHeight - prevH;
         });
       }
     } catch {
-      /* keep current history */
     } finally {
       setLoadingOlder(false);
     }
@@ -270,8 +257,6 @@ export function DmThread({
     }
   }
 
-  // Voice note: upload first (direct browser → bucket), then send. The
-  // optimistic line plays instantly from an object URL until the echo.
   async function sendVoice(clip: VoiceClip) {
     if (busy) return;
     const status = await mediaStatus();
@@ -400,7 +385,6 @@ export function DmThread({
     setTimeout(() => setFlashId((f) => (f === id ? null : f)), 1200);
   }
 
-  // Touch devices: message actions appear only for the tapped message.
   function onRowTap(e: ReactMouseEvent, id: string) {
     const t = e.target as HTMLElement;
     if (t.closest("button, a, textarea, input, [role='toolbar']")) return;
@@ -446,8 +430,6 @@ export function DmThread({
     );
   }
 
-  // Group consecutive messages from the same author (5-min window),
-  // broken by deletes / stickers / replies — Discord-style compact flow.
   function groupedWithPrev(idx: number): boolean {
     if (idx === 0) return false;
     const prev = msgs[idx - 1];
@@ -622,7 +604,6 @@ export function DmThread({
                   <span className="ml-1 text-[11px] text-[#949BA4]">· Seen</span>
                 ) : null;
 
-              // Sticker: header row + big glyph, no bubble
               if (m.kind === "sticker") {
                 return (
                   <div
@@ -673,7 +654,6 @@ export function DmThread({
                 );
               }
 
-              // Compact follow-up: hover-revealed timestamp gutter, no avatar
               if (compact) {
                 return (
                   <div
@@ -752,7 +732,6 @@ export function DmThread({
                 );
               }
 
-              // Full row: avatar + username/timestamp header + content
               return (
                 <div
                   key={m.id}

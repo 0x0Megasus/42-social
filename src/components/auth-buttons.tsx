@@ -94,8 +94,6 @@ export function AuthButtons() {
           : "/";
       window.location.href = redirect;
     } catch (e) {
-      // Only blame missing keys when the server actually lacks them —
-      // Firebase SDK errors ("Firebase: Error (auth/…)") mean something else.
       if (!config?.google) {
         setError("Google login isn't set up on this server yet.");
       } else if (

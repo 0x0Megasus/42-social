@@ -42,11 +42,9 @@ export async function POST(req: Request) {
     googleId = String(payload.user_id ?? payload.sub ?? "");
     avatar = (payload.picture as string | undefined) ?? null;
   } catch {
-    // Production NEVER accepts unverified tokens — Firebase project is mandatory.
     if (process.env.NODE_ENV === "production") {
       return NextResponse.json({ error: "invalid token" }, { status: 401 });
     }
-    // DEV ONLY fallback: decode without verify (documented; configure Firebase for prod)
     try {
       const p = decodeJwt(idToken);
       email = String(p.email ?? "");
@@ -60,11 +58,8 @@ export async function POST(req: Request) {
 
   if (!email)
     return NextResponse.json({ error: "email missing" }, { status: 400 });
-  // provider display names render site-wide — bound + normalize them
   name = clean(name, 60) || email;
 
-  // Scoped email upsert (no root transaction — the old updateDB-on-`/`
-  // timed out as the database grew).
   const user = await upsertUserByEmail({
     email,
     name,

@@ -52,7 +52,6 @@ function getTargetSnapshot(): ProfileTarget {
     const saved = window.localStorage.getItem(KEY);
     if (saved === "instagram" || saved === "intra") return saved;
   } catch {
-    /* private mode */
   }
   return "intra";
 }
@@ -63,7 +62,7 @@ function getTargetServerSnapshot(): ProfileTarget {
 
 function subscribeTarget(onChange: () => void) {
   window.addEventListener(TARGET_EVENT, onChange);
-  window.addEventListener("storage", onChange); // sync across tabs
+  window.addEventListener("storage", onChange);
   return () => {
     window.removeEventListener(TARGET_EVENT, onChange);
     window.removeEventListener("storage", onChange);
@@ -87,7 +86,6 @@ export function Footer() {
       window.localStorage.setItem(KEY, t);
       window.dispatchEvent(new Event(TARGET_EVENT));
     } catch {
-      /* private mode */
     }
   }
 

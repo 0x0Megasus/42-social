@@ -1,6 +1,5 @@
 import { PersonRowSkeleton } from "@/components/skeletons";
 
-// Mirrors ExploreClient: title → search bar → person rows.
 export default function Loading() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading students">

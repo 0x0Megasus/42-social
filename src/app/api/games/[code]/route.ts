@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { viewRoom } from "@/lib/games-store";
 import { getSession } from "@/lib/session";
 
-// GET /api/games/[code] -> room view (players + spectators)
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ code: string }> }

@@ -47,9 +47,6 @@ describe("collectionEntries (storage-key reads)", () => {
   });
 
   it("survives sparse arrays (deleted slots as holes, not nulls)", () => {
-    // RTDB array-coercion can hand back holes instead of nulls. .map
-    // preserves holes and destructuring the resulting undefined crashes —
-    // this input took down the homepage feed (getFeedPage → queryFallback).
     const sparse: unknown[] = new Array(3);
     sparse[0] = makePost("p_a");
     sparse[2] = makePost("p_c");
@@ -60,17 +57,12 @@ describe("collectionEntries (storage-key reads)", () => {
 });
 
 describe("edit-after-delete ghost regression", () => {
-  // Storage: A at key "0", B deleted (hole at "1"), C at key "2".
-  // The OLD code did readCollection().findIndex() on the compacted array
-  // ([A, C]) and wrote to /posts/1 — resurrecting B's tombstone as a
-  // partial ghost row instead of updating C at key "2".
   it("resolves C to storage key 2, not compacted index 1", () => {
     const val = { 0: makePost("p_a"), 2: makePost("p_c") };
     const entries = collectionEntries("posts", val);
     const hit = entries.find(({ row }) => row.id === "p_c");
     expect(hit?.key).toBe("2");
 
-    // What the old code computed (compacted rows then findIndex):
     const compacted = entries.map(({ row }) => row);
     expect(compacted.findIndex((p) => p.id === "p_c")).toBe(1);
     expect(hit?.key).not.toBe(
@@ -109,7 +101,6 @@ describe("countLivePostsByAuthor", () => {
       makePost("p_a", { authorId: "u_1" }),
       makePost("p_b", { authorId: "u_1", deleted: true }),
       makePost("p_c", { authorId: "u_2" }),
-      // Ghost rows (no authorId) belong to nobody.
       { deleted: false } as Post,
     ];
     expect(countLivePostsByAuthor(rows, "u_1")).toBe(1);

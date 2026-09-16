@@ -1,11 +1,6 @@
-// Profile cover resolution: direct https image/GIF links pass through;
-// Pinterest pin/share links are pages (no image extension), so they resolve
-// server-side via the page's og:image. Anything else is rejected.
 
 const DIRECT_RE = /\.(gif|webp|png|jpe?g)$/i;
 
-// Only these hosts are ever fetched server-side (SSRF guard) and only
-// Pinterest's own CDN output is ever accepted back.
 const PIN_HOSTS = new Set([
   "pinterest.com",
   "www.pinterest.com",
@@ -14,11 +9,8 @@ const PIN_HOSTS = new Set([
 ]);
 const PINIMG_HOSTS = new Set(["i.pinimg.com", "s.pinimg.com"]);
 
-// og:image lives in <head> — cap the download instead of reading whole pages.
 const MAX_SCRAPE_BYTES = 300_000;
 
-// Pure og:image/twitter:image extraction (both attribute orders, HTML
-// entities decoded). Unit-tested.
 export function extractOgImage(html: string): string | null {
   const patterns = [
     /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
@@ -36,9 +28,6 @@ export function extractOgImage(html: string): string | null {
   return null;
 }
 
-// Pinterest "GIF" pins are actually video pins — og:image is only the
-// static poster. Pure og:video extraction (secure_url preferred, both
-// attribute orders). Unit-tested.
 export function extractOgVideo(html: string): string | null {
   const patterns = [
     /<meta[^>]+property=["']og:video:secure_url["'][^>]*content=["']([^"']+)["']/i,
@@ -58,12 +47,10 @@ export function extractOgVideo(html: string): string | null {
 
 function directImageUrl(u: URL): string | null {
   if (DIRECT_RE.test(u.pathname)) return u.toString().slice(0, 2000);
-  // pinimg serves uploads, sometimes extensionless — trust the host itself.
   if (PINIMG_HOSTS.has(u.hostname)) return u.toString().slice(0, 2000);
   return null;
 }
 
-// Pinterest video hosts (animated "GIF" pins are mp4s here).
 const PINVIDEO_HOSTS = new Set(["v.pinimg.com"]);
 
 function acceptCdnUrl(raw: string): string | null {
@@ -74,8 +61,6 @@ function acceptCdnUrl(raw: string): string | null {
     return null;
   }
   if (u.protocol !== "https:") return null;
-  // Only Pinterest's own CDN output — never hotlink a third party the
-  // pin page happened to embed.
   if (
     !PINIMG_HOSTS.has(u.hostname) &&
     !PINVIDEO_HOSTS.has(u.hostname) &&
@@ -86,16 +71,13 @@ function acceptCdnUrl(raw: string): string | null {
 }
 
 export type ResolvedCover = {
-  /** static image / poster frame (renders when no video) */
   image: string | null;
-  /** animated pin content (mp4) — renders as an autoplaying cover */
   video: string | null;
 };
 
 async function resolvePinCover(pageUrl: string): Promise<ResolvedCover | null> {
   try {
     const res = await fetch(pageUrl, {
-      // Never hang profile saves on Pinterest's latency or bot walls.
       signal: AbortSignal.timeout(8000),
       headers: {
         Accept: "text/html",
@@ -127,7 +109,6 @@ async function resolvePinCover(pageUrl: string): Promise<ResolvedCover | null> {
       off += c.byteLength;
     }
     const html = new TextDecoder().decode(total);
-    // Animated pins: og:video is the motion, og:image only its poster.
     const videoRaw = extractOgVideo(html);
     const video =
       videoRaw && PINVIDEO_HOSTS.has(safeHost(videoRaw)) ? videoRaw : null;
@@ -148,9 +129,6 @@ function safeHost(raw: string): string {
   }
 }
 
-// Full resolution: ""/non-strings → null (remove), direct image links pass
-// through, Pinterest pin links resolve via og:image (+ og:video for animated
-// pins — og:image alone is just the static poster), anything else → null.
 export async function resolveCoverUrl(
   input: unknown
 ): Promise<ResolvedCover | null> {
@@ -166,7 +144,6 @@ export async function resolveCoverUrl(
   if (u.protocol !== "https:") return null;
   const direct = directImageUrl(u);
   if (direct) return { image: direct, video: null };
-  // A raw Pinterest video paste doubles as an animated cover (no poster).
   if (PINVIDEO_HOSTS.has(u.hostname))
     return { image: null, video: u.toString().slice(0, 2000) };
   if (PIN_HOSTS.has(u.hostname)) return resolvePinCover(u.toString());

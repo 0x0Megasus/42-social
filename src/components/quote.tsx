@@ -3,8 +3,6 @@
 import { cn } from "@/lib/utils";
 import { stripMarkup } from "@/components/rich-text";
 
-// Reply quote: brand-cyan accent bar + tinted wash (matches the reply-to bar
-// in post comments and DM threads — one accent language everywhere).
 export function Quote({
   name,
   body,

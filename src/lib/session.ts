@@ -7,7 +7,6 @@ const ISSUER = "42-social";
 const AUDIENCE = "42-social-web";
 
 function secret(): Uint8Array {
-  // Fail closed: never sign sessions with a guessable fallback in production.
   const s = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!s) {
     if (process.env.NODE_ENV === "production") {
@@ -56,8 +55,6 @@ export async function getSession(): Promise<SessionPayload | null> {
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
   try {
-    // Strict first (issuer + audience), then lenient for pre-hardening tokens
-    // so existing logins survive the upgrade instead of a mass logout.
     let payload;
     try {
       ({ payload } = await jwtVerify(token, secret(), {

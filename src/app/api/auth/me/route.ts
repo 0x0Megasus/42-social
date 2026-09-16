@@ -10,7 +10,6 @@ export async function POST() {
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ user: null });
-  // O(1) map read (cached 30s) instead of a full-root scan.
   const user = await cachedUserById(session.sub);
   return NextResponse.json(
     { user: user ? userPublic(user) : null },
