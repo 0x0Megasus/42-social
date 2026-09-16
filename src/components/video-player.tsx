@@ -11,15 +11,19 @@ function fmt(t: number): string {
 
 // Custom video player in the app's dark language: poster until first play,
 // tap-to-toggle, seek bar, time, mute, fullscreen. `suspended` pauses
-// playback from outside (e.g. comments opened on the same post).
+// playback from outside (e.g. comments opened on the same post). `aspect`
+// ("W / H" from the stored upload dims) reserves the frame before metadata
+// loads so the feed never jumps; the video itself always keeps its ratio.
 export function VideoPlayer({
   src,
   poster,
   suspended,
+  aspect,
 }: {
   src: string;
   poster?: string | null;
   suspended?: boolean;
+  aspect?: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -76,6 +80,7 @@ export function VideoPlayer({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="group relative mt-3 overflow-hidden rounded-xl bg-black"
+      style={aspect ? { aspectRatio: aspect, maxHeight: 480 } : undefined}
     >
       <video
         ref={videoRef}
@@ -92,7 +97,7 @@ export function VideoPlayer({
         onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
         className={cn(
-          "mx-auto block h-auto max-h-80 w-auto max-w-full cursor-pointer bg-black",
+          "mx-auto block h-auto max-h-[480px] w-auto max-w-full cursor-pointer bg-black object-contain",
           controlsHidden && "cursor-none"
         )}
       />

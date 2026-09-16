@@ -227,12 +227,22 @@ export function Composer({
         className="w-full resize-none rounded-[2px] border border-zinc-300 bg-zinc-50 p-3 text-[15px] leading-6 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:bg-black dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-zinc-600"
       />
       {attach && (
-        <div className="relative mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-black dark:border-zinc-800">
+        <div
+          className="relative mt-3 flex items-center justify-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-black"
+          // Reserve the compressed image's ratio so the preview never
+          // jumps or letterboxes wrong; clamped so portraits stay compact.
+          // Media is always contained (never cropped) like FB/X.
+          style={
+            attach.kind === "image"
+              ? { aspectRatio: `${attach.w} / ${attach.h}`, maxHeight: 320 }
+              : undefined
+          }
+        >
           {attach.kind === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={attach.preview} alt="Attachment preview" className="max-h-72 w-full object-cover" />
+            <img src={attach.preview} alt="Attachment preview" className="max-h-80 w-auto max-w-full object-contain" />
           ) : (
-            <video src={attach.preview} muted playsInline preload="metadata" className="max-h-72 w-full" />
+            <video src={attach.preview} muted playsInline preload="metadata" className="max-h-80 w-auto max-w-full object-contain" />
           )}
           <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-bold tracking-[0.18em] text-white backdrop-blur">
             {attach.kind === "image" ? "PHOTO" : "VIDEO"}

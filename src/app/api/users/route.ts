@@ -3,6 +3,8 @@ import { isSupportUser } from "@/lib/support";
 import { queryCollection, userPublic } from "@/lib/db";
 import { followingIdsOf } from "@/lib/graph";
 import { getSession } from "@/lib/session";
+import { ensureCountersBackfilled } from "@/lib/counters";
+import { after } from "next/server";
 
 // GET /api/users?q=&limit= -> public directory (same data as /explore).
 // Server-side prefix search on the indexed nameLower field — O(matches),
@@ -14,6 +16,9 @@ export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   const term = (q.get("q") ?? "").trim().toLowerCase().slice(0, 60);
   const limit = Math.min(Math.max(Number(q.get("limit")) || 50, 1), 100);
+  // Self-healing counters for pre-fix rows — runs after the response so
+  // it never slows the directory.
+  after(() => ensureCountersBackfilled());
   const rows = term
     ? await queryCollection("users", {
         orderBy: "nameLower",

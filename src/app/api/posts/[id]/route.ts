@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   cachedUserById,
   queryCollectionEntries,
-  readCollection,
+  readCollectionEntries,
   readPath,
   readPostById,
   updatePaths,
@@ -12,7 +12,7 @@ import {
 import { isSupportUser } from "@/lib/support";
 import { destroyAssets } from "@/lib/cloudinary-admin";
 import { publicIdFromUrl } from "@/lib/cloudinary";
-import { recountPost } from "@/lib/counters";
+import { recountPost, recountUserPosts } from "@/lib/counters";
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
@@ -80,14 +80,17 @@ async function ownPost(
   const next: Post = { ...p };
   mutate(next);
   // Dual-write: map row (O(1) future reads) + array leaf for legacy scans.
+  // The array write MUST use the real storage key: readCollection compacts
+  // away delete-tombstones, so a compacted findIndex points at the wrong
+  // slot (resurrecting a ghost row or corrupting a neighbor).
   await writePostById(postId, next);
-  const posts = await readCollection("posts");
-  const idx = posts.findIndex((x) => x.id === postId);
-  if (idx >= 0) {
+  const entries = await readCollectionEntries("posts");
+  const hit = entries.find(({ row }) => row.id === postId);
+  if (hit) {
     await updatePaths({
-      [`/posts/${idx}/body`]: next.body,
-      [`/posts/${idx}/edited`]: next.edited,
-      [`/posts/${idx}/deleted`]: next.deleted,
+      [`/posts/${hit.key}/body`]: next.body,
+      [`/posts/${hit.key}/edited`]: next.edited,
+      [`/posts/${hit.key}/deleted`]: next.deleted,
     }).catch(() => null);
   }
   const counts = await recountPost(postId).catch(() => null);
@@ -148,8 +151,8 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const mine = p.authorId === session.sub && !p.deleted;
   if (!mine && !isSupportUser(me ?? undefined))
     return NextResponse.json({ error: "not found" }, { status: 404 });
-  const [posts, likeEntries, commentEntries, likers] = await Promise.all([
-    readCollection("posts"),
+  const [entries, likeEntries, commentEntries, likers] = await Promise.all([
+    readCollectionEntries("posts"),
     queryCollectionEntries("likes", {
       orderBy: "postId",
       equalTo: id,
@@ -162,12 +165,14 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     }).catch(() => []),
     readPath<Record<string, true>>(`/likes-by-post/${id}`).catch(() => null),
   ]);
-  const idx = posts.findIndex((x) => x.id === id);
+  const hit = entries.find(({ row }) => row.id === id);
   const paths: Record<string, unknown> = {
     [`/posts-by-id/${id}`]: null,
     [`/likes-by-post/${id}`]: null,
   };
-  if (idx >= 0) paths[`/posts/${idx}`] = null;
+  // Storage-key tombstone: a compacted findIndex would null the wrong slot
+  // once earlier deletes left holes behind.
+  if (hit) paths[`/posts/${hit.key}`] = null;
   for (const { key } of likeEntries) paths[`/likes/${key}`] = null;
   for (const { key } of commentEntries) paths[`/comments/${key}`] = null;
   // Mirror-clean each liker's by-user leaf (exact, from the map we drop).
@@ -176,6 +181,11 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       paths[`/likes-by-user/${liker}/${id}`] = null;
   }
   await updatePaths(paths);
+  // Recompute the author's post counter exactly: hard-deleting a row used
+  // to leave postsCount untouched, so profile/explore kept showing deleted
+  // posts. Exact recount also heals any prior drift. Note p.authorId (not
+  // the caller) — support can delete other users' posts.
+  await recountUserPosts(p.authorId).catch(() => null);
   // Reclaim Cloudinary bytes (best-effort, after RTDB). public_ids are
   // authoritative; URL-derived ids cover rows written before cloudIds.
   void destroyAssets([

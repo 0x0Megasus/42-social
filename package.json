@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "repair:ghosts": "node scripts/repair-ghost-posts.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

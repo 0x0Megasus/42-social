@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pushToCollection, readUserById, uid } from "@/lib/db";
+import { pushToCollection, readUserById, uid, writePostById } from "@/lib/db";
 import { isSupportUser } from "@/lib/support";
 import { getSession } from "@/lib/session";
 import { rateLimit, isDuplicate } from "@/lib/ratelimit";
@@ -80,9 +80,12 @@ export async function POST(req: Request) {
       typeof v === "number" && Number.isFinite(v) ? v : null;
     const duration = num(video.duration);
     const bytes = num(video.bytes);
+    // Aligned with the client probe (media.ts: 60s/50MB, +1s tolerance):
+    // anything the composer lets through must pass here, and anything
+    // over the caps is rejected even when the client is bypassed.
     if (
-      (duration !== null && (duration < 0 || duration > 65)) ||
-      (bytes !== null && (bytes < 0 || bytes > 60 * 1024 * 1024))
+      (duration !== null && (duration < 0 || duration > 61)) ||
+      (bytes !== null && (bytes < 0 || bytes > 50 * 1024 * 1024))
     )
       return NextResponse.json({ error: "invalid" }, { status: 400 });
     cleanVideo = {
@@ -150,6 +153,9 @@ export async function POST(req: Request) {
     likesCount: 0,
     commentsCount: 0,
   });
+  // Dual-write the O(1) map row at creation (not just on edit): single-post
+  // reads prefer /posts-by-id, and the map must never lag the array.
+  await writePostById(post.id, post).catch(() => null);
   // Author post counter (exact recompute would scan /posts; a +1 leaf bump
   // is exact here since we just added exactly one).
   await bumpUserCounter(session.sub, "postsCount", 1).catch(() => null);

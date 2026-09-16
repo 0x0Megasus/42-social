@@ -2,12 +2,16 @@ import { queryCollection, userPublic } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { beatsFor, isOnlineAt } from "@/lib/presence";
 import { followingIdsOf } from "@/lib/graph";
+import { ensureCountersBackfilled } from "@/lib/counters";
 import { ExploreClient } from "@/components/explore-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function Explore() {
   const session = await getSession();
+  // Self-healing counters for pre-fix rows (deletes never decremented
+  // postsCount) — runs after the response so it never slows the page.
+  ensureCountersBackfilled();
   // Latest 30 users via indexed query — O(30), not O(all users).
   const page = await queryCollection("users", {
     orderBy: "createdAt",

@@ -40,6 +40,11 @@ export async function enrichPosts(
   // O(page) instead of O(all likes). Multiplexed over one RTDB socket.
   const likeData = await Promise.all(
     posts.map(async (p) => {
+      // Belt-and-braces: rows without an id are corrupt (partial ghost
+      // rows from the old index bug) — never fan them out into unbounded
+      // collection-wide queries.
+      if (typeof p.id !== "string" || !p.id)
+        return { count: 0, mine: false };
       const [mapVal, legacy] = await Promise.all([
         preMaps?.has(p.id)
           ? preMaps.get(p.id) ?? null
@@ -66,7 +71,12 @@ export async function enrichPosts(
   // Author fallback for legacy rows without snapshots (cached 30s).
   const needAuthor = new Map<string, Promise<unknown>>();
   for (const p of posts) {
-    if (!p.author && !needAuthor.has(p.authorId)) {
+    if (
+      !p.author &&
+      typeof p.authorId === "string" &&
+      p.authorId &&
+      !needAuthor.has(p.authorId)
+    ) {
       needAuthor.set(
         p.authorId,
         cachedUserById(p.authorId).catch(() => null)
@@ -117,7 +127,16 @@ export async function getFeedPage(opts: {
     orderBy: "createdAt",
     limit: INVENTORY,
   });
-  const live = rows.filter((p) => !p.deleted);
+  // Drop tombstones, soft-deletes, and corrupt id-less rows (partial ghost
+  // rows from the old index bug carry no id/authorId and must never render).
+  const live = rows.filter(
+    (p) =>
+      !p.deleted &&
+      typeof p.id === "string" &&
+      p.id &&
+      typeof p.authorId === "string" &&
+      p.authorId
+  );
   // -- 2. SIGNALS: relationship context (one query each, both bounded) --
   const followingSet = new Set<string>();
   const myLiked = new Set<string>();
@@ -141,7 +160,7 @@ export async function getFeedPage(opts: {
     ...p,
     likes: p.likesCount ?? 0,
     comments: p.commentsCount ?? 0,
-    hasImage: !!p.image,
+    hasImage: !!p.image || !!p.video,
     likerIds,
   });
   // -- 3. STAGE-1 (lightweight filter): cheap signals over all candidates --

@@ -1,10 +1,12 @@
 import {
+  bustUserCache,
   chunkedUpdate,
   encodeEmailKey,
   newPushKey,
   queryCollection,
   queryCollectionEntries,
   readCollection,
+  readCollectionEntries,
   readPath,
   updatePaths,
 } from "@/lib/db";
@@ -31,13 +33,15 @@ export function ensureCountersBackfilled(): void {
 }
 
 async function backfill(): Promise<void> {
-  const [posts, likes, comments, users, follows] = await Promise.all([
-    readCollection("posts"),
+  const [postEntries, likes, comments, userEntries, follows] = await Promise.all([
+    readCollectionEntries("posts"),
     readCollection("likes"),
     readCollection("comments"),
-    readCollection("users"),
+    readCollectionEntries("users"),
     readCollection("follows"),
   ]);
+  const posts = postEntries.map(({ row }) => row);
+  const users = userEntries.map(({ row }) => row);
   const likeCount = new Map<string, number>();
   for (const l of likes)
     likeCount.set(l.postId, (likeCount.get(l.postId) ?? 0) + 1);
@@ -56,32 +60,36 @@ async function backfill(): Promise<void> {
     following.set(f.followerId, (following.get(f.followerId) ?? 0) + 1);
   }
   const paths: Record<string, unknown> = {};
-  posts.forEach((p, i) => {
+  // Storage-key writes: entries carry the real RTDB key, which survives
+  // delete-tombstone holes that a compacted loop index would miss.
+  postEntries.forEach(({ key, row: p }) => {
     if (typeof p.likesCount !== "number") {
       p.likesCount = likeCount.get(p.id) ?? 0;
-      paths[`/posts/${i}/likesCount`] = p.likesCount;
+      paths[`/posts/${key}/likesCount`] = p.likesCount;
     }
     if (typeof p.commentsCount !== "number") {
       p.commentsCount = commentCount.get(p.id) ?? 0;
-      paths[`/posts/${i}/commentsCount`] = p.commentsCount;
+      paths[`/posts/${key}/commentsCount`] = p.commentsCount;
     }
   });
-  users.forEach((u, i) => {
-    if (typeof u.postsCount !== "number") {
+  userEntries.forEach(({ key, row: u }) => {
+    // Rows without an id can't be counted or mirrored — skip them.
+    if (typeof u.id !== "string" || !u.id) return;
+    if (counterNeedsWrite(u.postsCount, postsByAuthor.get(u.id) ?? 0)) {
       u.postsCount = postsByAuthor.get(u.id) ?? 0;
-      paths[`/users/${i}/postsCount`] = u.postsCount;
+      paths[`/users/${key}/postsCount`] = u.postsCount;
     }
-    if (typeof u.followersCount !== "number") {
+    if (counterNeedsWrite(u.followersCount, followers.get(u.id) ?? 0)) {
       u.followersCount = followers.get(u.id) ?? 0;
-      paths[`/users/${i}/followersCount`] = u.followersCount;
+      paths[`/users/${key}/followersCount`] = u.followersCount;
     }
-    if (typeof u.followingCount !== "number") {
+    if (counterNeedsWrite(u.followingCount, following.get(u.id) ?? 0)) {
       u.followingCount = following.get(u.id) ?? 0;
-      paths[`/users/${i}/followingCount`] = u.followingCount;
+      paths[`/users/${key}/followingCount`] = u.followingCount;
     }
     if (typeof u.nameLower !== "string") {
       u.nameLower = u.name.toLowerCase();
-      paths[`/users/${i}/nameLower`] = u.nameLower;
+      paths[`/users/${key}/nameLower`] = u.nameLower;
     }
   });
   await updatePaths(paths);
@@ -127,43 +135,100 @@ async function backfill(): Promise<void> {
     ]);
   }
   for (const u of users) {
+    // Skip id-less rows (partial ghost rows from the old index bug must
+    // never be mirrored into the keyed maps).
+    if (typeof u.id !== "string" || !u.id) continue;
     mirror.push([`/users-by-id/${u.id}`, u]);
     mirror.push([`/users-by-handle/${u.id.toLowerCase()}`, u.id]);
-    mirror.push([`/users-by-handle/${u.name.toLowerCase()}`, u.id]);
+    if (typeof u.name === "string" && u.name)
+      mirror.push([`/users-by-handle/${u.name.toLowerCase()}`, u.id]);
     if (u.login42)
       mirror.push([`/users-by-handle/${u.login42.toLowerCase()}`, u.id]);
     if (u.email)
       mirror.push([`/users-by-email/${encodeEmailKey(u.email)}`, u.id]);
   }
-  for (const p of posts) mirror.push([`/posts-by-id/${p.id}`, p]);
+  for (const p of posts) {
+    if (typeof p.id !== "string" || !p.id) continue;
+    mirror.push([`/posts-by-id/${p.id}`, p]);
+  }
   await chunkedUpdate(mirror);
 }
 
-// Best-effort +/-1 leaf bump of a user counter. Reads /users fresh to
-// resolve the array index (user rows are append-only, so indices are
-// stable). Races self-heal via recompute-on-touch / backfill.
+// Best-effort +/-1 leaf bump of a user counter. Resolves the real RTDB
+// storage key (user rows are append-only, but deletes elsewhere can still
+// leave null holes that a compacted findIndex would miss).
+// Races self-heal via recompute-on-touch / backfill.
 export async function bumpUserCounter(
   userId: string,
   field: "postsCount" | "followersCount" | "followingCount",
   delta: number
 ): Promise<void> {
-  const users = await readCollection("users");
-  const idx = users.findIndex((u) => u.id === userId);
-  if (idx < 0) return;
-  const cur = users[idx][field];
+  const entries = await readCollectionEntries("users");
+  const hit = entries.find(({ row }) => row.id === userId);
+  if (!hit) return;
+  const cur = hit.row[field];
   await updatePaths({
-    [`/users/${idx}/${field}`]:
+    [`/users/${hit.key}/${field}`]:
       typeof cur === "number" ? cur + delta : delta > 0 ? 1 : 0,
   });
 }
 
+// Pure predicate for the backfill: write the counter when it is missing
+// OR drifted. Deletes never decremented postsCount, so stored zeros can be
+// wrong — correcting them here heals history. Post/follow activity is
+// low-frequency and every touch recomputes from a fresh read, so a raced
+// correction self-heals on next activity. (Post likes/comments stay
+// missing-only: they toggle far more often, so the race window matters.)
+export function counterNeedsWrite(cur: unknown, want: number): boolean {
+  return typeof cur !== "number" || cur !== want;
+}
+
+// Pure counter: live (non-deleted) posts authored by userId. Extracted so
+// the recount logic is unit-tested without a database.
+export function countLivePostsByAuthor(
+  posts: { deleted?: boolean; authorId?: string }[],
+  userId: string
+): number {
+  return posts.filter((p) => !p.deleted && p.authorId === userId).length;
+}
+
+// Exact recompute of one user's postsCount. Called after post delete —
+// deletes used to never touch the counter, so it drifted high (profile /
+// explore kept showing deleted posts). Exact recompute also heals any prior
+// drift. Writes the map row + array leaf (storage-key addressed) and busts
+// the 30s cached profile read.
+export async function recountUserPosts(
+  userId: string
+): Promise<number | null> {
+  const [postEntries, userEntries, mapRow] = await Promise.all([
+    readCollectionEntries("posts").catch(() => []),
+    readCollectionEntries("users").catch(() => []),
+    readPath<Record<string, unknown>>(`/users-by-id/${userId}`).catch(
+      () => null
+    ),
+  ]);
+  const count = countLivePostsByAuthor(
+    postEntries.map(({ row }) => row),
+    userId
+  );
+  const paths: Record<string, unknown> = {};
+  const hit = userEntries.find(({ row }) => row.id === userId);
+  if (hit) paths[`/users/${hit.key}/postsCount`] = count;
+  // Never create a partial map row for a user the backfill hasn't mirrored.
+  if (mapRow && typeof mapRow === "object")
+    paths[`/users-by-id/${userId}/postsCount`] = count;
+  if (Object.keys(paths).length === 0) return null;
+  await updatePaths(paths).catch(() => null);
+  bustUserCache(userId);
+  return count;
+}
 // Exact recount of one post's engagement: keyed map ∪ legacy array rows
 // (union, so pre-map rows keep counting until the backfill mirrors them).
 // Writes the denormalized counters back for O(1) feed reads.
 export async function recountPost(
   postId: string
 ): Promise<{ likes: number; comments: number } | null> {
-  const [mapVal, legacyLikes, legacyComments, posts] = await Promise.all([
+  const [mapVal, legacyLikes, legacyComments, entries] = await Promise.all([
     readPath<Record<string, true>>(`/likes-by-post/${postId}`).catch(
       () => null
     ),
@@ -177,10 +242,12 @@ export async function recountPost(
       equalTo: postId,
       limit: 100_000,
     }).catch(() => []),
-    readCollection("posts"),
+    readCollectionEntries("posts"),
   ]);
-  const idx = posts.findIndex((p) => p.id === postId);
-  if (idx < 0) return null;
+  // Storage-key write — a compacted findIndex would stamp these counters
+  // onto the wrong slot (the ghost-post bug) once deletes left holes.
+  const hit = entries.find(({ row }) => row.id === postId);
+  if (!hit) return null;
   const mapKeys =
     mapVal && typeof mapVal === "object"
       ? new Set(
@@ -193,8 +260,8 @@ export async function recountPost(
   const likes = mapKeys.size;
   const comments = legacyComments.filter((c) => !c.deleted).length;
   await updatePaths({
-    [`/posts/${idx}/likesCount`]: likes,
-    [`/posts/${idx}/commentsCount`]: comments,
+    [`/posts/${hit.key}/likesCount`]: likes,
+    [`/posts/${hit.key}/commentsCount`]: comments,
   }).catch(() => null);
   // Keep the by-id map row in sync — but only if it exists (never create
   // a partial row for a legacy post the backfill hasn't mirrored yet).

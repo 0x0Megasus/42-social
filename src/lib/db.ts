@@ -209,6 +209,22 @@ export function normalizeUser(u: User): User {
 export function normalizePost(p: Post): Post {
   if (!("edited" in p)) (p as Post).edited = false;
   if (!("deleted" in p)) (p as Post).deleted = false;
+  // Every nullable/optional field gets an explicit default here: legacy or
+  // partially-written rows often MISS keys entirely (undefined), and a
+  // single undefined value makes RTDB reject an entire set()/update()
+  // write with a 500. Media fields especially must never stay undefined —
+  // a resurrected tombstone row without them renders as a ghost post.
+  if ((p as Post).image === undefined) (p as Post).image = null;
+  if ((p as Post).thumb === undefined) (p as Post).thumb = null;
+  if ((p as Post).video === undefined) (p as Post).video = null;
+  if ((p as Post).cloudIds === undefined) (p as Post).cloudIds = null;
+  if ((p as Post).imgW === undefined) (p as Post).imgW = null;
+  if ((p as Post).imgH === undefined) (p as Post).imgH = null;
+  if ((p as Post).author === undefined) (p as Post).author = null;
+  if (typeof (p as Post).likesCount !== "number")
+    (p as Post).likesCount = 0;
+  if (typeof (p as Post).commentsCount !== "number")
+    (p as Post).commentsCount = 0;
   return p;
 }
 
@@ -331,14 +347,41 @@ function toRows<N extends CollectionName>(
   name: N,
   val: unknown
 ): CollectionRow[N][] {
-  const raw: unknown[] = Array.isArray(val)
-    ? val
-    : val && typeof val === "object"
-      ? Object.values(val as Record<string, unknown>)
-      : [];
-  return raw
-    .filter((r) => r && typeof r === "object")
-    .map((r) => normalizeRow(name, r as CollectionRow[N]));
+  return collectionEntries(name, val).map(({ row }) => row);
+}
+
+// Key-preserving variant of toRows: same filtering/normalization, but each
+// row keeps its RTDB storage key. REQUIRED for any targeted write — deletes
+// null out slots (`/posts/3 = null`), so the Nth surviving row is NOT at
+// storage key N. Using a compacted findIndex as a storage key writes to the
+// wrong slot: it resurrects tombstones as partial ghost rows (no id/author/
+// createdAt) or corrupts a neighboring row. Pure (no I/O) — unit-tested.
+export function collectionEntries<N extends CollectionName>(
+  name: N,
+  val: unknown
+): { key: string; row: CollectionRow[N] }[] {
+  const out: { key: string; row: CollectionRow[N] }[] = [];
+  if (Array.isArray(val)) {
+    // Index loop (NOT map + destructure): RTDB can hand back sparse arrays
+    // (deleted slots as holes, not nulls). .map preserves holes and for..of
+    // yields undefined for them, which crashes tuple destructuring before
+    // any guard runs. Index access reads holes as undefined → skipped below.
+    for (let i = 0; i < val.length; i++) {
+      const v: unknown = val[i];
+      if (v && typeof v === "object")
+        out.push({ key: String(i), row: normalizeRow(name, v as CollectionRow[N]) });
+    }
+    return out;
+  }
+  if (val && typeof val === "object") {
+    // Object.entries always yields real [key, value] pairs — safe to
+    // destructure; null tombstones are skipped by the guard.
+    for (const [key, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v && typeof v === "object")
+        out.push({ key, row: normalizeRow(name, v as CollectionRow[N]) });
+    }
+  }
+  return out;
 }
 
 // Read ONE collection (never the root). O(collection), not O(database).
@@ -350,6 +393,19 @@ export async function readCollection<N extends CollectionName>(
     getRtdb().ref(`/${name}`).get()
   );
   return toRows(name, snap.val());
+}
+
+// Same as readCollection but keeps RTDB storage keys. Use this whenever the
+// caller writes back to a specific row (`/${name}/${key}/...`) — the key is
+// the only correct address once deletes have left null holes behind.
+export async function readCollectionEntries<N extends CollectionName>(
+  name: N
+): Promise<{ key: string; row: CollectionRow[N] }[]> {
+  assertRtdb();
+  const snap = await rtdb(`${name}.get`, () =>
+    getRtdb().ref(`/${name}`).get()
+  );
+  return collectionEntries(name, snap.val());
 }
 
 export type CollectionQuery = {
@@ -769,10 +825,12 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
       }
       if (dirty) {
         await writeUserById(existing.id, existing).catch(() => null);
-        const users = await readCollection("users").catch(() => []);
-        const idx = users.findIndex((u) => u.id === existing.id);
-        if (idx >= 0)
-          await setPath(`/users/${idx}`, existing).catch(() => null);
+        // Storage-key write: compacted findIndex is wrong once deletes
+        // left null holes (see collectionEntries).
+        const entries = await readCollectionEntries("users").catch(() => []);
+        const hit = entries.find(({ row }) => row.id === existing.id);
+        if (hit)
+          await setPath(`/users/${hit.key}`, existing).catch(() => null);
         await indexUserHandles(existing).catch(() => null);
       }
       return existing;

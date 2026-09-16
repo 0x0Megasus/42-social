@@ -160,6 +160,11 @@ export function PostMedia({
         src={post.video.url}
         poster={post.video.thumb}
         suspended={suspended}
+        aspect={
+          post.video.w && post.video.h
+            ? `${post.video.w} / ${post.video.h}`
+            : null
+        }
       />
     );
   }
@@ -170,16 +175,22 @@ export function PostMedia({
           <button
             onClick={() => setExpanded(true)}
             aria-label="View image fullscreen"
-            className="mt-3 block w-full overflow-hidden rounded-xl bg-black"
+            className="mt-3 block w-full overflow-hidden rounded-xl bg-zinc-100 dark:bg-black"
+            // FB/X-style fit-inside: reserve the natural ratio (stored at
+            // upload) so the layout never jumps, cap the height so
+            // portraits stay compact, and never crop or stretch.
+            style={
+              post.imgW && post.imgH
+                ? { aspectRatio: `${post.imgW} / ${post.imgH}`, maxHeight: 480 }
+                : undefined
+            }
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={inView ? post.image : (post.thumb ?? post.image)}
               alt="Post image"
               loading="lazy"
-              // Fit-inside (never crop, never stretch): the box caps at
-              // max-h-80 / full width and the media keeps its own ratio.
-              className="mx-auto block h-auto max-h-80 w-auto max-w-full"
+              className="mx-auto block h-auto max-h-[480px] w-auto max-w-full object-contain"
             />
           </button>
         </InView>
@@ -621,7 +632,7 @@ export function PostCard({
     }
   }
 
-  const handle = post.author?.login42 ?? post.author?.name ?? "student";
+  const handle = post.author?.login42 ?? post.author?.name ?? "unknown";
 
   const cardRef = useRef<HTMLElement>(null);
   useEffect(() => {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   bustUserCache,
   indexUserHandles,
-  readCollection,
+  readCollectionEntries,
   readUserById,
   updatePaths,
   userPublic,
@@ -87,17 +87,18 @@ export async function PATCH(req: Request) {
     socials: normalized,
     nameLower: cleanName.toLowerCase(),
   };
-  // Dual-write: by-id map (O(1) reads) + legacy array leaf. Array index
-  // resolved fresh per call (user rows are append-only → indices stable).
+  // Dual-write: by-id map (O(1) reads) + legacy array leaf, addressed by
+  // the real storage key (compacted findIndex is wrong once null holes
+  // from deletes exist — see collectionEntries).
   await writeUserById(session.sub, next).catch(() => null);
-  const users = await readCollection("users");
-  const idx = users.findIndex((u) => u.id === session.sub);
-  if (idx >= 0) {
+  const entries = await readCollectionEntries("users");
+  const hit = entries.find(({ row }) => row.id === session.sub);
+  if (hit) {
     await updatePaths({
-      [`/users/${idx}/name`]: cleanName,
-      [`/users/${idx}/bio`]: cleanBio,
-      [`/users/${idx}/socials`]: normalized,
-      [`/users/${idx}/nameLower`]: next.nameLower,
+      [`/users/${hit.key}/name`]: cleanName,
+      [`/users/${hit.key}/bio`]: cleanBio,
+      [`/users/${hit.key}/socials`]: normalized,
+      [`/users/${hit.key}/nameLower`]: next.nameLower,
     }).catch(() => null);
   }
   await indexUserHandles(next, prev.name).catch(() => null);

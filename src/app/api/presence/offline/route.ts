@@ -20,15 +20,25 @@ export async function POST() {
       getRtdb().ref("/users").get()
     );
     const raw = snap.val() as unknown;
-    let idx = -1;
+    // Resolve the real storage key (array position or object key) — the
+    // node turns object-shaped once deletes leave holes behind.
+    let key: string | null = null;
     if (Array.isArray(raw)) {
-      idx = (raw as { id?: string }[]).findIndex(
+      const idx = (raw as { id?: string }[]).findIndex(
         (u) => u && u.id === session.sub
       );
+      if (idx >= 0) key = String(idx);
+    } else if (raw && typeof raw === "object") {
+      for (const [k, v] of Object.entries(raw as Record<string, { id?: string }>)) {
+        if (v && v.id === session.sub) {
+          key = k;
+          break;
+        }
+      }
     }
-    if (idx >= 0) {
+    if (key !== null) {
       await rtdb(`users.seen:${session.sub}`, () =>
-        getRtdb().ref(`/users/${idx}/lastSeen`).set(now)
+        getRtdb().ref(`/users/${key}/lastSeen`).set(now)
       );
     }
   } catch {
