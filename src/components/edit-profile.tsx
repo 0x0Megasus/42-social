@@ -248,12 +248,6 @@ export function EditProfileForm({
         <label htmlFor="edit-spotify" className="flex items-center gap-1 text-xs font-semibold text-zinc-500">
           <Music size={12} /> Favorite song / singer (Spotify)
         </label>
-        <p className="mt-1 text-[11px] text-zinc-500">
-          Song search isn&apos;t set up on the server — paste a Spotify link below instead.
-        </p>
-        <p className="mt-2 text-[11px] text-zinc-500">
-          Paste a Spotify link directly:
-        </p>
         <div className="mt-1 flex items-center gap-2">
           <input
             id="edit-spotify"
