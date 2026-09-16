@@ -191,7 +191,15 @@ export function EditProfileForm({
       }
       setEditing(false);
       toast.success("Profile updated");
-      router.refresh();
+      const d = await res.json().catch(() => ({}));
+      const nextHandle = d?.user?.login42 ?? d?.user?.name;
+      if (nextHandle) {
+        const target = `/profile/${encodeURIComponent(nextHandle)}`;
+        if (window.location.pathname !== target) router.push(target);
+        else router.refresh();
+      } else {
+        router.refresh();
+      }
     } catch {
       setError("Couldn't save. Try again.");
     } finally {

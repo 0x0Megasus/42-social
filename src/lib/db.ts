@@ -655,20 +655,13 @@ export async function removePostById(id: string): Promise<void> {
 
 export async function indexUserHandles(
   user: Pick<User, "id" | "login42" | "name">,
-  prevName?: string | null
+  _prevName?: string | null
 ): Promise<void> {
   const paths: Record<string, unknown> = {
     [`/users-by-handle/${user.id.toLowerCase()}`]: user.id,
     [`/users-by-handle/${user.name.toLowerCase()}`]: user.id,
   };
   if (user.login42) paths[`/users-by-handle/${user.login42.toLowerCase()}`] = user.id;
-  if (
-    prevName &&
-    prevName.toLowerCase() !== user.name.toLowerCase() &&
-    (!user.login42 || prevName.toLowerCase() !== user.login42.toLowerCase())
-  ) {
-    paths[`/users-by-handle/${prevName.toLowerCase()}`] = null;
-  }
   await updatePaths(paths);
 }
 
