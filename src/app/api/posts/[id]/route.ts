@@ -169,6 +169,8 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   const paths: Record<string, unknown> = {
     [`/posts-by-id/${id}`]: null,
     [`/likes-by-post/${id}`]: null,
+    // Pinned announcements leave the feed index too.
+    [`/pinned-posts/${id}`]: null,
   };
   // Storage-key tombstone: a compacted findIndex would null the wrong slot
   // once earlier deletes left holes behind.

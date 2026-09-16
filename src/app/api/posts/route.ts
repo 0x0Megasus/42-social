@@ -139,6 +139,8 @@ export async function POST(req: Request) {
     cloudIds: cleanIds.length > 0 ? cleanIds : null,
     edited: false,
     deleted: false,
+    pinned: false,
+    pinnedAt: null,
     createdAt: new Date().toISOString(),
     author: me
       ? {

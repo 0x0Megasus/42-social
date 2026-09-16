@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Link2 } from "lucide-react";
+import { ImagePlus, LoaderCircle, Music, Pencil, Search, Trash2, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { graphemeLen } from "@/lib/sanitize";
+import type { UserSpotify } from "@/lib/db";
+import type { SpotifySearchResult } from "@/lib/spotify";
 
 const PRESETS = ["GitHub", "LinkedIn", "Instagram", "X"] as const;
 
@@ -16,10 +18,14 @@ export function EditProfileForm({
   name,
   bio,
   socials: initialSocials = [],
+  cover: initialCover = null,
+  spotify: initialSpotify = null,
 }: {
   name: string;
   bio: string;
   socials?: { label: string; url: string }[];
+  cover?: string | null;
+  spotify?: UserSpotify | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
@@ -27,6 +33,23 @@ export function EditProfileForm({
   const [draftSocials, setDraftSocials] = useState<{ label: string; url: string }[]>(
     initialSocials
   );
+  const [draftCover, setDraftCover] = useState(initialCover ?? "");
+  const [draftSpotifyUrl, setDraftSpotifyUrl] = useState(initialSpotify?.url ?? "");
+  const [checkingSpot, setCheckingSpot] = useState(false);
+  const [spotInfo, setSpotInfo] = useState<{
+    kind: string;
+    title: string | null;
+    subtitle: string | null;
+    image: string | null;
+  } | null>(null);
+  const [spotError, setSpotError] = useState("");
+  const [spotQuery, setSpotQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<SpotifySearchResult[]>([]);
+  const [searched, setSearched] = useState(false);
+  // True once the server says search is unconfigured — the box swaps for a
+  // paste-link hint instead of failing every keystroke.
+  const [searchGone, setSearchGone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -52,6 +75,85 @@ export function EditProfileForm({
     setDraftSocials(draftSocials.map((s, i) => (i === idx ? { ...s, url } : s)));
   }
 
+  async function searchSpotify() {
+    const q = spotQuery.trim();
+    if (!q || searching) return;
+    setSearching(true);
+    setSearched(false);
+    setResults([]);
+    try {
+      const res = await fetch(
+        `/api/spotify/search?q=${encodeURIComponent(q)}`
+      );
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (res.status === 503) {
+        setSearchGone(true);
+        return;
+      }
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      setResults(Array.isArray(d.results) ? d.results : []);
+      setSearched(true);
+    } catch {
+      setSearched(true);
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function pickResult(r: SpotifySearchResult) {
+    setDraftSpotifyUrl(r.url);
+    setSpotInfo({
+      kind: r.kind,
+      title: r.title,
+      subtitle: r.subtitle,
+      image: r.image,
+    });
+    setSpotError("");
+    setResults([]);
+  }
+
+  async function verifySpotify() {
+    const v = draftSpotifyUrl.trim();
+    if (!v) {
+      setSpotError("Paste a Spotify song or artist link first.");
+      return;
+    }
+    setCheckingSpot(true);
+    setSpotError("");
+    setSpotInfo(null);
+    try {
+      const res = await fetch("/api/spotify/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: v }),
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!res.ok) {
+        setSpotError("That doesn't look like a Spotify song/artist link.");
+        return;
+      }
+      const d = await res.json();
+      setSpotInfo({
+        kind: d.spotify.kind,
+        title: d.spotify.title,
+        subtitle: d.spotify.subtitle,
+        image: d.spotify.image,
+      });
+    } catch {
+      setSpotError("Couldn't check that link.");
+    } finally {
+      setCheckingSpot(false);
+    }
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -64,7 +166,13 @@ export function EditProfileForm({
       const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: draftName.trim(), bio: draftBio.trim(), socials: draftSocials }),
+        body: JSON.stringify({
+          name: draftName.trim(),
+          bio: draftBio.trim(),
+          socials: draftSocials,
+          cover: draftCover.trim(),
+          spotifyUrl: draftSpotifyUrl.trim(),
+        }),
       });
       if (res.status === 401) {
         router.push("/login");
@@ -75,7 +183,11 @@ export function EditProfileForm({
         setError(
           res.status === 429
             ? `Slow down — try again in ${d?.retryAfter ?? 10}s.`
-            : (d?.error ?? "Couldn't save.")
+            : d?.error === "invalid-cover"
+              ? "That cover link doesn't work — use a direct .gif link or a Pinterest pin link."
+              : d?.error === "invalid-spotify"
+                ? "That Spotify link isn't a song or artist."
+                : (d?.error ?? "Couldn't save.")
         );
         return;
       }
@@ -96,6 +208,13 @@ export function EditProfileForm({
           setDraftName(name);
           setDraftBio(bio);
           setDraftSocials(initialSocials);
+          setDraftCover(initialCover ?? "");
+          setDraftSpotifyUrl(initialSpotify?.url ?? "");
+          setSpotInfo(null);
+          setSpotError("");
+          setSpotQuery("");
+          setResults([]);
+          setSearched(false);
           setEditing(true);
         }}
         className="mt-4 flex items-center gap-1.5 rounded-full border border-[#3F3F46] px-4 py-1.5 text-[13px] font-semibold text-zinc-700 dark:border-[#3F3F46] dark:text-zinc-200"
@@ -138,6 +257,191 @@ export function EditProfileForm({
         />
         <p className="text-right text-[11px] text-zinc-400">
           {graphemeLen(draftBio)}/160
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="edit-cover" className="flex items-center gap-1 text-xs font-semibold text-zinc-500">
+          <ImagePlus size={12} /> Cover — any .gif link
+        </label>
+        <input
+          id="edit-cover"
+          value={draftCover}
+          onChange={(e) => setDraftCover(e.target.value)}
+          placeholder="https://…/banner.gif"
+          autoComplete="off"
+          className="mt-1 h-10 w-full rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+        />
+        {draftCover.trim().startsWith("https://") && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={draftCover.trim()}
+            src={draftCover.trim()}
+            alt="Cover preview"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+            className="mt-2 max-h-28 w-full rounded-lg object-cover"
+          />
+        )}
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Direct https .gif link or a Pinterest pin link. Clear to remove.
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="edit-spotify" className="flex items-center gap-1 text-xs font-semibold text-zinc-500">
+          <Music size={12} /> Favorite song / singer (Spotify)
+        </label>
+        {searchGone ? (
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Song search isn&apos;t set up on the server — paste a Spotify link below instead.
+          </p>
+        ) : (
+          <>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="edit-spotify-search"
+                value={spotQuery}
+                onChange={(e) => setSpotQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void searchSpotify();
+                  }
+                }}
+                placeholder="Search a song or artist…"
+                autoComplete="off"
+                className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+              />
+              <button
+                type="button"
+                onClick={searchSpotify}
+                disabled={searching || !spotQuery.trim()}
+                aria-label="Search Spotify"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[2px] border border-[#3F3F46] text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-50"
+              >
+                {searching ? (
+                  <LoaderCircle size={15} className="animate-spin" />
+                ) : (
+                  <Search size={15} />
+                )}
+              </button>
+            </div>
+            {results.length > 0 && (
+              <div
+                role="listbox"
+                aria-label="Spotify results"
+                className="mt-2 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-[#27272A] bg-[#09090B] p-1.5"
+              >
+                {results.map((r) => (
+                  <button
+                    key={`${r.kind}:${r.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => pickResult(r)}
+                    className="flex w-full items-center gap-2 rounded-md p-1.5 text-left hover:bg-[#18181B]"
+                  >
+                    {r.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.image}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-md object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#18181B] text-zinc-400">
+                        <Music size={16} />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold text-[#F4F4F5]">
+                        {r.title}
+                      </span>
+                      <span className="block truncate text-xs text-zinc-400">
+                        {r.subtitle ?? r.kind}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-[#18181B] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                      {r.kind}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {searched && results.length === 0 && !searching && (
+              <p className="mt-1 text-[11px] text-zinc-500">
+                No results — try different words, or paste a link below.
+              </p>
+            )}
+          </>
+        )}
+        <p className="mt-2 text-[11px] text-zinc-500">
+          …or paste a Spotify link directly:
+        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            id="edit-spotify"
+            value={draftSpotifyUrl}
+            onChange={(e) => {
+              setDraftSpotifyUrl(e.target.value);
+              setSpotInfo(null);
+              setSpotError("");
+            }}
+            placeholder="https://open.spotify.com/track/…"
+            autoComplete="off"
+            className="h-10 min-w-0 flex-1 rounded-[2px] border-[1px] border-[#27272A] bg-[#09090B] px-3 text-[14px] text-[#F4F4F5] placeholder:text-[#71717A] outline-none focus:border-[#52525B]"
+          />
+          <button
+            type="button"
+            onClick={verifySpotify}
+            disabled={checkingSpot || !draftSpotifyUrl.trim()}
+            className="h-10 shrink-0 rounded-[2px] border border-[#3F3F46] px-3 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-50"
+          >
+            {checkingSpot ? (
+              <LoaderCircle size={14} className="animate-spin" />
+            ) : (
+              "Check"
+            )}
+          </button>
+        </div>
+        {spotError && (
+          <p role="alert" className="mt-1 text-[12px] text-rose-500">
+            {spotError}
+          </p>
+        )}
+        {spotInfo && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#27272A] bg-[#09090B] p-2">
+            {spotInfo.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={spotInfo.image}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-md object-cover"
+              />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#18181B] text-zinc-400">
+                <Music size={16} />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-[#F4F4F5]">
+                {spotInfo.title ?? (spotInfo.kind === "track" ? "Song" : "Artist")}
+              </p>
+              <p className="truncate text-xs text-zinc-400">
+                {spotInfo.subtitle ?? spotInfo.kind}
+              </p>
+            </div>
+          </div>
+        )}
+        {!spotInfo && initialSpotify && !draftSpotifyUrl.trim() && (
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Clearing removes “{initialSpotify.title ?? initialSpotify.kind}” from your profile.
+          </p>
+        )}
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Song or artist link/URI only — albums &amp; playlists won&apos;t take.
         </p>
       </div>
 

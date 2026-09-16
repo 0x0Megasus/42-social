@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { collectionEntries, normalizePost, type Post } from "../db";
 import { countLivePostsByAuthor, counterNeedsWrite } from "../counters";
-import { planPostsRepair } from "../repair";
+import { selectPinnedPosts, MAX_PINNED } from "../feed";
 import { timeAgo } from "../format";
 
 function makePost(id: string, extra: Partial<Post> = {}): Post {
@@ -98,32 +98,8 @@ describe("normalizePost", () => {
     expect(row.commentsCount).toBe(0);
     expect(row.edited).toBe(false);
     expect(row.deleted).toBe(false);
-  });
-});
-
-describe("planPostsRepair", () => {
-  it("flags id-less rows and ignores null tombstones (array shape)", () => {
-    const ghost = { body: "edited!", edited: true, deleted: false };
-    const plan = planPostsRepair([makePost("p_a"), null, ghost]);
-    expect(plan.ghostKeys).toEqual(["2"]);
-    expect(plan.liveKeys).toEqual(["0"]);
-  });
-
-  it("flags id-less rows in object snapshots", () => {
-    const plan = planPostsRepair({
-      0: makePost("p_a"),
-      1: { body: "ghost" },
-    });
-    expect(plan.ghostKeys).toEqual(["1"]);
-    expect(plan.liveKeys).toEqual(["0"]);
-  });
-
-  it("survives sparse arrays", () => {
-    const sparse: unknown[] = new Array(2);
-    sparse[0] = makePost("p_a");
-    const plan = planPostsRepair(sparse);
-    expect(plan.ghostKeys).toEqual([]);
-    expect(plan.liveKeys).toEqual(["0"]);
+    expect(row.pinned).toBe(false);
+    expect(row.pinnedAt).toBeNull();
   });
 });
 
@@ -149,6 +125,39 @@ describe("counterNeedsWrite", () => {
     expect(counterNeedsWrite(3, 2)).toBe(true);
     expect(counterNeedsWrite(2, 2)).toBe(false);
     expect(counterNeedsWrite(0, 0)).toBe(false);
+  });
+});
+
+describe("selectPinnedPosts", () => {
+  const pinned = (id: string, at: string, extra: Partial<Post> = {}) =>
+    makePost(id, { pinned: true, pinnedAt: at, ...extra });
+
+  it("returns newest-first pinned posts, skipping unpinned/deleted/id-less rows", () => {
+    const rows = [
+      makePost("p_plain"),
+      pinned("p_old", "2026-01-01T00:00:00.000Z"),
+      pinned("p_new", "2026-09-01T00:00:00.000Z"),
+      pinned("p_gone", "2026-09-10T00:00:00.000Z", { deleted: true }),
+      { pinned: true, pinnedAt: "2026-09-11T00:00:00.000Z" } as Post,
+    ];
+    expect(selectPinnedPosts(rows).map((p) => p.id)).toEqual([
+      "p_new",
+      "p_old",
+    ]);
+  });
+
+  it("caps the announcement list", () => {
+    const rows = Array.from(
+      { length: MAX_PINNED + 3 },
+      (_, i) =>
+        pinned(
+          `p_${i}`,
+          `2026-09-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`
+        )
+    );
+    const sel = selectPinnedPosts(rows);
+    expect(sel).toHaveLength(MAX_PINNED);
+    expect(sel[0].id).toBe(`p_${MAX_PINNED + 2}`);
   });
 });
 

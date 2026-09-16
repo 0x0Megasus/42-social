@@ -21,6 +21,7 @@ import { followListsOf, followingIdsOf } from "@/lib/graph";
 import { enrichPosts } from "@/lib/feed";
 import { getRecords } from "@/lib/games-store";
 import { GAME_LABEL, type GameKind } from "@/lib/games/types";
+import { SpotifyPlayer } from "@/components/spotify-player";
 import { MapPin, Trophy } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -68,9 +69,36 @@ export default async function Profile({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 text-center dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex justify-center">
-          <span className="relative">
+      <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        {pub.coverVideo ? (
+          <video
+            src={pub.coverVideo}
+            poster={pub.cover ?? undefined}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            aria-hidden
+            className="h-36 w-full object-cover sm:h-44"
+          />
+        ) : pub.cover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={pub.cover}
+            alt=""
+            aria-hidden
+            className="h-36 w-full object-cover sm:h-44"
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="h-24 w-full bg-gradient-to-r from-cyan-500/30 via-zinc-500/20 to-zinc-900 sm:h-28"
+          />
+        )}
+        <div className="px-6 pb-6 text-center">
+        <div className="-mt-9 flex justify-center">
+          <span className="relative rounded-full ring-4 ring-white dark:ring-zinc-950">
             <Avatar name={pub.name} src={pub.avatar} size={72} />
             <LiveDot userId={user.id} initialOnline={peerOnline} size={18} />
           </span>
@@ -115,12 +143,20 @@ export default async function Profile({
         {isMe && (
           <>
             <div className="flex justify-center">
-              <EditProfileForm name={pub.name} bio={pub.bio} />
+              <EditProfileForm
+                name={pub.name}
+                bio={pub.bio}
+                cover={pub.cover}
+                spotify={pub.spotify}
+              />
             </div>
             <SoundSetting />
           </>
         )}
+        </div>
       </section>
+
+      {pub.spotify && <SpotifyPlayer spotify={pub.spotify} />}
 
       {played.length > 0 && (
         <section

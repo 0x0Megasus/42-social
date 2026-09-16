@@ -2,6 +2,7 @@ import {
   cachedUserById,
   queryCollection,
   readPath,
+  readPostById,
   userPublic,
   type AuthorSnapshot,
   type Comment,
@@ -13,6 +14,29 @@ import { rankFeed } from "@/lib/feed-rank";
 import type { FeedPost } from "@/components/post-card";
 
 export const FEED_PAGE = 20;
+// Max founder announcements pinned above the feed (index is tiny, but a
+// runaway pin list must never push the real feed off the first page).
+export const MAX_PINNED = 5;
+
+export type PinnedIndexEntry = { postId?: string; pinnedAt?: string };
+
+// Pure newest-first pinned selection. The row's `pinned` flag is the source
+// of truth (the /pinned-posts index only drives discovery), so stale index
+// entries and deleted rows never render. Unit-tested.
+export function selectPinnedPosts(posts: Post[], max = MAX_PINNED): Post[] {
+  return posts
+    .filter(
+      (p) =>
+        p.pinned &&
+        !p.deleted &&
+        typeof p.id === "string" &&
+        p.id
+    )
+    .sort((a, b) =>
+      String(b.pinnedAt ?? "").localeCompare(String(a.pinnedAt ?? ""))
+    )
+    .slice(0, max);
+}
 // Inventory size for the ranker (mirrors FB's ~500-candidate shortlist).
 const INVENTORY = 500;
 // Stage-2 full scoring (with friend-proof signals) runs on the top slice.
@@ -123,19 +147,43 @@ export async function getFeedPage(opts: {
   const offset = Math.min(Math.max(opts.offset ?? 0, 0), MAX_OFFSET);
   const meId = opts.meId ?? null;
   // -- 1. INVENTORY: recent candidates, indexed, bounded --
-  const rows = await queryCollection("posts", {
-    orderBy: "createdAt",
-    limit: INVENTORY,
-  });
-  // Drop tombstones, soft-deletes, and corrupt id-less rows (partial ghost
-  // rows from the old index bug carry no id/authorId and must never render).
+  // Pinned announcements resolve through the tiny /pinned-posts index
+  // (O(pinned) map reads) — never a full scan.
+  const [rows, pinnedIndex] = await Promise.all([
+    queryCollection("posts", {
+      orderBy: "createdAt",
+      limit: INVENTORY,
+    }),
+    readPath<Record<string, PinnedIndexEntry>>("/pinned-posts").catch(
+      () => null
+    ),
+  ]);
+  const indexed =
+    pinnedIndex && typeof pinnedIndex === "object"
+      ? Object.values(pinnedIndex)
+      : [];
+  const pinnedCandidates = (
+    await Promise.all(
+      indexed.map((e) =>
+        e && typeof e.postId === "string" && e.postId
+          ? readPostById(e.postId).catch(() => null)
+          : null
+      )
+    )
+  ).filter((p): p is Post => !!p);
+  const pinned = selectPinnedPosts(pinnedCandidates);
+  const pinnedIds = new Set(pinned.map((p) => p.id));
+  // Drop tombstones, soft-deletes, corrupt id-less rows (partial ghost
+  // rows from the old index bug carry no id/authorId and must never render),
+  // and pinned posts (they render in their own slot above, never twice).
   const live = rows.filter(
     (p) =>
       !p.deleted &&
       typeof p.id === "string" &&
       p.id &&
       typeof p.authorId === "string" &&
-      p.authorId
+      p.authorId &&
+      !pinnedIds.has(p.id)
   );
   // -- 2. SIGNALS: relationship context (one query each, both bounded) --
   const followingSet = new Set<string>();
@@ -197,8 +245,18 @@ export async function getFeedPage(opts: {
   // -- 5. PAGE from the ranked list (hasMore against the full ranking,
   // not the shortlist) --
   const page = ranked.slice(offset, offset + limit);
+  const enriched = await enrichPosts(page, meId, maps);
+  // Founder announcements top the first page for EVERYONE (never repeated
+  // on deeper pages, never duplicated inside the ranked list).
+  if (offset === 0 && pinned.length > 0) {
+    const enrichedPinned = await enrichPosts(pinned, meId);
+    return {
+      posts: [...enrichedPinned, ...enriched],
+      hasMore: end < stage1.length,
+    };
+  }
   return {
-    posts: await enrichPosts(page, meId, maps),
+    posts: enriched,
     hasMore: end < stage1.length,
   };
 }

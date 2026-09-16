@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Heart, MessageCircle, Pencil, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
+import { Heart, MessageCircle, Pencil, Pin, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { FounderBadge } from "@/components/founder-badge";
@@ -36,6 +36,8 @@ export type FeedPost = {
   } | null;
   edited: boolean;
   deleted: boolean;
+  pinned?: boolean;
+  pinnedAt?: string | null;
   createdAt: string;
   likes: number;
   comments: number;
@@ -107,6 +109,10 @@ export function Avatar({
           width={size}
           height={size}
           loading="lazy"
+          // Google avatar hosts (lh3.googleusercontent.com) can refuse
+          // requests carrying a Referer — omit it so hotlinked profile
+          // photos actually load instead of degrading to initials.
+          referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
           className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300"
           style={{ opacity: loaded ? 1 : 0 }}
@@ -451,6 +457,7 @@ export function PostCard({
   // Cleared automatically once fresh props arrive (see effect below).
   const [bodyOverride, setBodyOverride] = useState<string | null>(null);
   const [editedOverride, setEditedOverride] = useState(false);
+  const [pinnedOverride, setPinnedOverride] = useState<boolean | null>(null);
   const [gone, setGone] = useState(false);
   const [confirmDeletePost, setConfirmDeletePost] = useState(false);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
@@ -501,6 +508,10 @@ export function PostCard({
   // Support deletes anything (moderation); editing stays author-only.
   const canDelete =
     !!meId && !post.deleted && (post.author?.id === meId || viewerIsSupport);
+  // Founder announcements: support users can pin their own posts to the
+  // top of everyone's feed. Server enforces strictly; the author snapshot
+  // may predate a support grant, so the live viewer flag also unlocks it.
+  const canPin = isMine && !!(post.author?.isSupport || viewerIsSupport);
 
   async function savePostEdit() {
     const text = clean(postDraft, 500);
@@ -549,6 +560,41 @@ export function PostCard({
       setIsOpen(false);
     } catch {
       toast.error("Delete failed");
+    }
+  }
+
+  async function togglePin() {
+    const next = !displayPinned;
+    setPinnedOverride(next);
+    setPostMenuOpen(false);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: next }),
+      });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (res.status === 429) {
+        const d = await res.json().catch(() => ({}));
+        setPinnedOverride(null);
+        toast.error(`Slow down — try again in ${d?.retryAfter ?? 30}s.`);
+        return;
+      }
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      onUpdate?.(post.id, {
+        pinned: d.post.pinned ?? next,
+        pinnedAt: d.post.pinnedAt ?? null,
+        likes: d.post.likes,
+        comments: d.post.comments,
+      });
+      toast.success(next ? "Pinned to top for everyone" : "Unpinned");
+    } catch {
+      setPinnedOverride(null);
+      toast.error("Pin failed");
     }
   }
 
@@ -645,13 +691,15 @@ export function PostCard({
   useEffect(() => {
     setBodyOverride(null);
     setEditedOverride(false);
-  }, [post.body, post.edited]);
+    setPinnedOverride(null);
+  }, [post.body, post.edited, post.pinned]);
 
   // Deleted posts vanish entirely — no tombstone, anywhere.
   if (post.deleted || gone) return null;
 
   const displayBody = bodyOverride ?? post.body;
   const displayEdited = post.edited || editedOverride;
+  const displayPinned = pinnedOverride ?? post.pinned ?? false;
 
   return (
     <article
@@ -681,6 +729,11 @@ export function PostCard({
             {post.author?.campus ? ` · ${post.author.campus}` : ""} ·{" "}
             {timeAgo(post.createdAt)}
             {displayEdited && " · Edited"}
+            {displayPinned && (
+              <span className="ml-1 inline-flex items-center gap-0.5 font-semibold text-amber-600 dark:text-amber-400">
+                · <Pin size={11} /> Pinned
+              </span>
+            )}
           </p>
         </div>
         {!editingPost && (
@@ -745,6 +798,15 @@ export function PostCard({
                             className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
                           >
                             <Pencil size={13} /> Edit post
+                          </button>
+                        )}
+                        {canPin && (
+                          <button
+                            role="menuitem"
+                            onClick={togglePin}
+                            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
+                          >
+                            <Pin size={13} /> {displayPinned ? "Unpin post" : "Pin to top"}
                           </button>
                         )}
                         <button

@@ -9,6 +9,19 @@ import { cached, invalidatePrefix } from "@/lib/cache";
 
 export type SocialLink = { label: string; url: string };
 
+// Favorite song/artist snapshot (resolved server-side from a pasted
+// Spotify link via the public oEmbed endpoint — no API keys, no OAuth).
+// The embed iframe renders its own live metadata; the snapshot keeps the
+// card meaningful when embeds are blocked.
+export type UserSpotify = {
+  kind: "track" | "artist";
+  id: string;
+  url: string;
+  title: string | null;
+  subtitle: string | null;
+  image: string | null;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -20,6 +33,12 @@ export type User = {
   coalition: string | null;
   bio: string;
   socials: SocialLink[];
+  /** profile cover banner — any working https image/GIF link */
+  cover: string | null;
+  /** animated cover content (Pinterest video pins) — autoplays the banner */
+  coverVideo: string | null;
+  /** favorite song (track) or singer (artist) */
+  spotify: UserSpotify | null;
   lastSeen: string | null;
   createdAt: string;
   // lowercase name for case-insensitive prefix search (indexOn nameLower)
@@ -66,6 +85,9 @@ export type Post = {
   cloudIds?: string[] | null;
   edited: boolean;
   deleted: boolean;
+  /** founder announcement: pinned posts top everyone's feed (support's own posts only) */
+  pinned?: boolean;
+  pinnedAt?: string | null;
   createdAt: string;
   author?: AuthorSnapshot | null;
   likesCount?: number;
@@ -194,6 +216,23 @@ export function normalizeUser(u: User): User {
   if ((u as User).avatar === undefined) (u as User).avatar = null;
   if ((u as User).campus === undefined) (u as User).campus = null;
   if ((u as User).coalition === undefined) (u as User).coalition = null;
+  if ((u as User).cover === undefined) (u as User).cover = null;
+  if ((u as User).coverVideo === undefined) (u as User).coverVideo = null;
+  if ((u as User).spotify === undefined) (u as User).spotify = null;
+  else if ((u as User).spotify !== null) {
+    // Coerce legacy garbage to null — the card only renders well-formed
+    // { kind, id } snapshots.
+    const s = (u as User).spotify as unknown as Record<string, unknown>;
+    if (
+      !s ||
+      typeof s !== "object" ||
+      (s.kind !== "track" && s.kind !== "artist") ||
+      typeof s.id !== "string" ||
+      !s.id
+    ) {
+      (u as User).spotify = null;
+    }
+  }
   if (typeof (u as User).bio !== "string") (u as User).bio = "";
   if (typeof (u as User).name !== "string") (u as User).name = "";
   if (typeof (u as User).email !== "string") (u as User).email = "";
@@ -209,6 +248,8 @@ export function normalizeUser(u: User): User {
 export function normalizePost(p: Post): Post {
   if (!("edited" in p)) (p as Post).edited = false;
   if (!("deleted" in p)) (p as Post).deleted = false;
+  if ((p as Post).pinned === undefined) (p as Post).pinned = false;
+  if ((p as Post).pinnedAt === undefined) (p as Post).pinnedAt = null;
   // Every nullable/optional field gets an explicit default here: legacy or
   // partially-written rows often MISS keys entirely (undefined), and a
   // single undefined value makes RTDB reject an entire set()/update()
@@ -807,7 +848,13 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
         existing.name = input.name;
         dirty = true;
       }
-      if (input.avatar && !existing.avatar) {
+      // Provider avatars go stale (lh3.googleusercontent.com URLs 404 over
+      // time → the error page gets ORB-blocked and every avatar degrades to
+      // an initial letter). Avatars aren't user-editable in-app, so the
+      // provider is authoritative: refresh whenever it hands us a different
+      // URL. Names stay gap-fill-only — a login must never clobber a
+      // profile rename.
+      if (input.avatar && existing.avatar !== input.avatar) {
         existing.avatar = input.avatar;
         dirty = true;
       }
@@ -832,6 +879,7 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
         if (hit)
           await setPath(`/users/${hit.key}`, existing).catch(() => null);
         await indexUserHandles(existing).catch(() => null);
+        bustUserCache(existing.id);
       }
       return existing;
     }
@@ -871,6 +919,9 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
     coalition: input.coalition,
     bio: "",
     socials: [],
+    cover: null,
+    coverVideo: null,
+    spotify: null,
     lastSeen: null,
     createdAt: new Date().toISOString(),
     nameLower: input.name.toLowerCase(),
@@ -914,6 +965,9 @@ export function userPublic(u: User) {
     coalition: u.coalition,
     bio: u.bio,
     socials: Array.isArray(u.socials) ? u.socials : [],
+    cover: u.cover ?? null,
+    coverVideo: u.coverVideo ?? null,
+    spotify: u.spotify ?? null,
     lastSeen: u.lastSeen ?? null,
     isSupport: isSupportUser(u),
   };

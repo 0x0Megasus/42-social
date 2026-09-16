@@ -11,6 +11,8 @@ import {
 import { getSession } from "@/lib/session";
 import { rateLimit } from "@/lib/ratelimit";
 import { clean } from "@/lib/sanitize";
+import { resolveCoverUrl } from "@/lib/cover";
+import { resolveSpotify } from "@/lib/spotify";
 
 const ALLOWED_LABELS = new Set(["github", "linkedin", "instagram", "x"]);
 
@@ -54,7 +56,12 @@ function normalizeSocials(input: unknown): { label: string; url: string }[] {
   return out;
 }
 
-// PATCH /api/profile { name, bio, socials } — edit your own nickname + bio + socials.
+// PATCH /api/profile { name, bio, socials, cover?, spotifyUrl? } — edit your
+// own nickname + bio + socials + cover banner + favorite song/artist.
+// cover: undefined = untouched, "" = remove, otherwise a direct https image
+// link or a Pinterest pin link (resolved server-side via og:image).
+// spotifyUrl: undefined = untouched, "" = remove, otherwise a Spotify
+// track/artist link or URI (resolved server-side; 400 when it isn't one).
 export async function PATCH(req: Request) {
   const session = await getSession();
   if (!session)
@@ -65,10 +72,14 @@ export async function PATCH(req: Request) {
       { error: "limit", retryAfter: lim.retryAfter },
       { status: 429, headers: { "Retry-After": String(lim.retryAfter) } }
     );
-  const { name, bio, socials } = (await req.json().catch(() => ({}))) as {
+  const { name, bio, socials, cover, spotifyUrl } = (await req.json().catch(
+    () => ({})
+  )) as {
     name?: string;
     bio?: string;
     socials?: unknown;
+    cover?: string;
+    spotifyUrl?: string;
   };
   const cleanName = clean(name, 30);
   const cleanBio = clean(bio, 160);
@@ -78,6 +89,22 @@ export async function PATCH(req: Request) {
       { status: 400 }
     );
   const normalized = normalizeSocials(socials);
+  let resolvedCover: Awaited<ReturnType<typeof resolveCoverUrl>> | undefined;
+  if (cover !== undefined) {
+    resolvedCover = await resolveCoverUrl(cover);
+    if (resolvedCover === null && String(cover).trim() !== "")
+      return NextResponse.json({ error: "invalid-cover" }, { status: 400 });
+  }
+  let spotify: Awaited<ReturnType<typeof resolveSpotify>> | undefined;
+  if (spotifyUrl !== undefined) {
+    if (typeof spotifyUrl !== "string" || !spotifyUrl.trim()) {
+      spotify = null;
+    } else {
+      spotify = await resolveSpotify(spotifyUrl);
+      if (!spotify)
+        return NextResponse.json({ error: "invalid-spotify" }, { status: 400 });
+    }
+  }
   const prev = await readUserById(session.sub);
   if (!prev) return NextResponse.json({ error: "not found" }, { status: 404 });
   const next = {
@@ -86,6 +113,13 @@ export async function PATCH(req: Request) {
     bio: cleanBio,
     socials: normalized,
     nameLower: cleanName.toLowerCase(),
+    ...(resolvedCover !== undefined
+      ? {
+          cover: resolvedCover?.image ?? null,
+          coverVideo: resolvedCover?.video ?? null,
+        }
+      : null),
+    ...(spotify !== undefined ? { spotify } : null),
   };
   // Dual-write: by-id map (O(1) reads) + legacy array leaf, addressed by
   // the real storage key (compacted findIndex is wrong once null holes
@@ -99,6 +133,15 @@ export async function PATCH(req: Request) {
       [`/users/${hit.key}/bio`]: cleanBio,
       [`/users/${hit.key}/socials`]: normalized,
       [`/users/${hit.key}/nameLower`]: next.nameLower,
+      ...(resolvedCover !== undefined
+        ? {
+            [`/users/${hit.key}/cover`]: resolvedCover?.image ?? null,
+            [`/users/${hit.key}/coverVideo`]: resolvedCover?.video ?? null,
+          }
+        : null),
+      ...(spotify !== undefined
+        ? { [`/users/${hit.key}/spotify`]: spotify }
+        : null),
     }).catch(() => null);
   }
   await indexUserHandles(next, prev.name).catch(() => null);
