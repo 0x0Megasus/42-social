@@ -14,11 +14,13 @@ export function VideoPlayer({
   poster,
   suspended,
   aspect,
+  duration,
 }: {
   src: string;
   poster?: string | null;
   suspended?: boolean;
   aspect?: string | null;
+  duration?: number | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -27,12 +29,15 @@ export function VideoPlayer({
   const [dur, setDur] = useState(0);
   const [muted, setMuted] = useState(false);
   const [started, setStarted] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
   const [hover, setHover] = useState(false);
-  const [hoverable] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(hover: hover)").matches
-  );
+  const [hoverable, setHoverable] = useState(false);
+
+  useEffect(() => {
+    setHoverable(window.matchMedia("(hover: hover)").matches);
+  }, []);
+  const propDur = typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const effectiveDur = dur > 0 ? dur : propDur;
   const controlsHidden = started && playing && hoverable && !hover;
 
   const pause = useCallback(() => {
@@ -53,10 +58,10 @@ export function VideoPlayer({
   function seek(clientX: number) {
     const el = videoRef.current;
     const bar = wrapRef.current?.querySelector<HTMLElement>("[data-seek]");
-    if (!el || !bar || !dur) return;
+    if (!el || !bar || !effectiveDur) return;
     const r = bar.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    el.currentTime = ratio * dur;
+    el.currentTime = ratio * effectiveDur;
     setAt(el.currentTime);
   }
 
@@ -72,9 +77,23 @@ export function VideoPlayer({
       ref={wrapRef}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="group relative mt-3 overflow-hidden rounded-xl bg-black"
-      style={aspect ? { aspectRatio: aspect, maxHeight: 480 } : undefined}
+      className="group relative mt-3 w-full overflow-hidden rounded-2xl bg-zinc-950 shadow-[0_24px_60px_-32px_rgba(0,0,0,0.85)]"
+      style={aspect ? { aspectRatio: aspect, maxHeight: 520 } : undefined}
     >
+      {poster ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={poster}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-45 blur-2xl saturate-150"
+          />
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/80" />
+        </>
+      ) : (
+        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.18),transparent_55%),linear-gradient(to_bottom,rgba(0,0,0,0.55),rgba(0,0,0,0.15),rgba(0,0,0,0.8))]" />
+      )}
       <video
         ref={videoRef}
         src={src}
@@ -90,7 +109,7 @@ export function VideoPlayer({
         onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => setDur(e.currentTarget.duration)}
         className={cn(
-          "mx-auto block h-auto max-h-[480px] w-auto max-w-full cursor-pointer bg-black object-contain",
+          "relative z-10 mx-auto block h-full max-h-[520px] w-full cursor-pointer object-contain",
           controlsHidden && "cursor-none"
         )}
       />
@@ -98,16 +117,16 @@ export function VideoPlayer({
         <button
           onClick={toggle}
           aria-label="Play video"
-          className="absolute inset-0 flex items-center justify-center"
+          className="absolute inset-0 z-20 flex items-center justify-center"
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition-transform hover:scale-105">
-            <Play size={22} fill="currentColor" />
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white shadow-2xl ring-1 ring-white/30 backdrop-blur-md transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-black/65 active:scale-[0.97] [@media(hover:hover)]:hover:scale-[1.03]">
+            <Play size={24} fill="currentColor" />
           </span>
         </button>
       )}
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6 transition-opacity duration-200",
+          "absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-3 pb-2.5 pt-8 transition-opacity duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
           controlsHidden && "pointer-events-none opacity-0"
         )}
       >
@@ -116,42 +135,55 @@ export function VideoPlayer({
           role="slider"
           aria-label="Seek"
           aria-valuemin={0}
-          aria-valuemax={Math.round(dur)}
-          aria-valuenow={Math.round(at)}
+          aria-valuemax={Math.round(effectiveDur)}
+          aria-valuenow={Math.round(Math.min(at, effectiveDur))}
           tabIndex={0}
           onKeyDown={(e) => {
             const el = videoRef.current;
             if (!el) return;
-            if (e.key === "ArrowRight") el.currentTime = Math.min(dur, at + 5);
+            if (e.key === "ArrowRight") el.currentTime = Math.min(effectiveDur, at + 5);
             if (e.key === "ArrowLeft") el.currentTime = Math.max(0, at - 5);
           }}
           onPointerDown={(e) => {
             (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            setScrubbing(true);
             seek(e.clientX);
             const move = (ev: PointerEvent) => seek(ev.clientX);
             const up = () => {
+              setScrubbing(false);
               window.removeEventListener("pointermove", move);
               window.removeEventListener("pointerup", up);
+              window.removeEventListener("pointercancel", up);
             };
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
+            window.addEventListener("pointercancel", up);
           }}
-          className="flex h-4 cursor-pointer items-center"
+          onPointerCancel={() => setScrubbing(false)}
+          className="group/seek flex h-7 cursor-pointer touch-none select-none items-center"
         >
-          <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/25">
+          <div className="relative h-2 w-full rounded-full bg-white/20 transition-colors duration-150 ease-out group-hover/seek:bg-white/30">
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-cyan-400"
-              style={{ width: `${dur ? (at / dur) * 100 : 0}%` }}
-            />
+              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-cyan-300 to-cyan-500 shadow-[0_0_12px_rgba(34,211,238,0.65)]"
+              style={{ width: `${effectiveDur ? Math.min(100, (at / effectiveDur) * 100) : 0}%` }}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute -right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 scale-75 rounded-full bg-white opacity-0 shadow transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/seek:scale-100 group-hover/seek:opacity-100 group-focus-visible/seek:scale-100 group-focus-visible/seek:opacity-100",
+                  (!hoverable || scrubbing) && "scale-100 opacity-100"
+                )}
+              />
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={toggle}
             aria-label={playing ? "Pause" : "Play"}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/10"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white outline-none transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-cyan-300/80 active:scale-[0.97]"
           >
-            {playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+            {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
           </button>
           <button
             onClick={() => {
@@ -161,21 +193,19 @@ export function VideoPlayer({
               setMuted(el.muted);
             }}
             aria-label={muted ? "Unmute" : "Mute"}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/10"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white outline-none transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-cyan-300/80 active:scale-[0.97]"
           >
-            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
-          <span className="font-mono text-[11px] tabular-nums text-white/80">
-            {fmt(at)} / {fmt(dur)}
+          <span className="text-[12px] font-medium tabular-nums text-white">
+            {fmt(at)} / {effectiveDur ? fmt(effectiveDur) : "--:--"}
           </span>
           <button
             onClick={fullscreen}
             aria-label="Fullscreen"
-            className={cn(
-              "ml-auto flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/10"
-            )}
+            className="ml-auto flex h-9 w-9 items-center justify-center rounded-full text-white outline-none transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-cyan-300/80 active:scale-[0.97]"
           >
-            <Maximize size={14} />
+            <Maximize size={15} />
           </button>
         </div>
       </div>

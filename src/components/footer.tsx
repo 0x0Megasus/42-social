@@ -107,6 +107,9 @@ export function Footer() {
             {SITE.ownerName}
           </a>
         </p>
+        <p className="text-[11px] text-zinc-400">
+          A project by a 1337 student — not an official 42 or 1337 app.
+        </p>
         <div
           role="group"
           aria-label="Choose which profile the name links to"

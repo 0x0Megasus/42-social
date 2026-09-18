@@ -36,6 +36,7 @@ export function PostList({
           meName={meName}
           meId={meId}
           viewerIsSupport={viewerIsSupport}
+          suspended={popupId !== null}
         />
       ))}
       {popup && (

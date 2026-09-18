@@ -154,6 +154,7 @@ export function PostMedia({
         src={post.video.url}
         poster={post.video.thumb}
         suspended={suspended}
+        duration={post.video.duration}
         aspect={
           post.video.w && post.video.h
             ? `${post.video.w} / ${post.video.h}`
@@ -268,6 +269,7 @@ export function PostCard({
   onFocusPost,
   initialComments,
   viewerIsSupport,
+  suspended,
 }: {
   post: FeedPost;
   onUpdate?: (id: string, patch: Partial<FeedPost>) => void;
@@ -279,6 +281,7 @@ export function PostCard({
   onFocusPost?: (post: FeedPost) => void;
   initialComments?: FeedComment[];
   viewerIsSupport?: boolean;
+  suspended?: boolean;
 }) {
   const router = useRouter();
   const [liked, setLiked] = useState(post.liked);
@@ -819,7 +822,7 @@ export function PostCard({
       ) : (
         <p className="mt-3 whitespace-pre-wrap break-words text-[15px] leading-6 sm:text-base sm:leading-7">{renderRich(displayBody)}</p>
       )}
-      <PostMedia post={post} suspended={isOpen || open} />
+      <PostMedia post={post} suspended={suspended || isOpen || open} />
       <div className="mt-3 flex items-center gap-1">
         <button
           onClick={toggleLike}

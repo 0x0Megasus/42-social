@@ -9,7 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Check, X, Reply, ArrowDown } from "lucide-react";
+import { Pencil, Trash2, Check, X, Reply, ArrowDown, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { AutoGrowTextarea } from "@/components/auto-grow-textarea";
@@ -34,6 +34,7 @@ type Msg = {
   deleted: boolean;
   replyTo: QuotedReply;
   createdAt: string;
+  sending?: boolean;
   attachment?: {
     url: string;
     duration: number | null;
@@ -55,6 +56,16 @@ const C = {
 } as const;
 
 const GROUP_GAP_MS = 5 * 60_000;
+
+function tempId(): string {
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return `tmp-${crypto.randomUUID()}`;
+    }
+  } catch {
+  }
+  return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`;
+}
 
 export function DmThread({
   convoId,
@@ -95,6 +106,7 @@ export function DmThread({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [voicing, setVoicing] = useState(false);
   const onPreviewing = useCallback((active: boolean) => setVoicing(active), []);
+  const sendingVoiceRef = useRef(false);
 
   function scrollToBottom(smooth = true) {
     const el = scrollRef.current;
@@ -149,9 +161,19 @@ export function DmThread({
             !serverIds.has(m.id) &&
             now - new Date(m.createdAt).getTime() < 15_000
         );
-        const byId = new Map(prev.map((m) => [m.id, m]));
+        const byId = new Map<string, Msg>();
+        for (const m of prev) {
+          if (!m.id.startsWith("tmp-")) byId.set(m.id, m);
+        }
         for (const m of next) byId.set(m.id, m);
-        const merged = [...byId.values(), ...temps];
+        const seen = new Set(byId.keys());
+        const merged = [...byId.values()];
+        for (const t of temps) {
+          if (!seen.has(t.id)) {
+            seen.add(t.id);
+            merged.push(t);
+          }
+        }
         merged.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         return merged.slice(-1000);
       });
@@ -217,7 +239,7 @@ export function DmThread({
         }
       : null;
     const temp: Msg = {
-      id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: tempId(),
       body: cleanText,
       kind: "text",
       mine: true,
@@ -258,15 +280,17 @@ export function DmThread({
   }
 
   async function sendVoice(clip: VoiceClip) {
-    if (busy) return;
+    if (busy || sendingVoiceRef.current) return;
+    sendingVoiceRef.current = true;
     const status = await mediaStatus();
     if (!status.ready) {
+      sendingVoiceRef.current = false;
       toast.error("Voice notes are unavailable right now — try again later.");
       return;
     }
     setBusy(true);
     const temp: Msg = {
-      id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: tempId(),
       body: `Voice message (${formatDuration(clip.duration)})`,
       kind: "voice",
       mine: true,
@@ -275,6 +299,7 @@ export function DmThread({
       deleted: false,
       replyTo: null,
       createdAt: new Date().toISOString(),
+      sending: true,
       attachment: {
         url: clip.url,
         duration: clip.duration,
@@ -317,6 +342,7 @@ export function DmThread({
       if (!res.ok) throw new Error();
       const d = await res.json();
       setMsgs((m) => m.map((x) => (x.id === temp.id ? d.message : x)));
+      void load();
     } catch (e) {
       setMsgs((m) => m.filter((x) => x.id !== temp.id));
       toast.error(
@@ -325,6 +351,7 @@ export function DmThread({
           : "Voice note not sent"
       );
     } finally {
+      sendingVoiceRef.current = false;
       setBusy(false);
     }
   }
@@ -436,6 +463,7 @@ export function DmThread({
     const cur = msgs[idx];
     if (prev.deleted || cur.deleted) return false;
     if (prev.kind === "sticker" || cur.kind === "sticker") return false;
+    if (prev.kind === "voice" || cur.kind === "voice") return false;
     if (cur.replyTo) return false;
     if (prev.mine !== cur.mine) return false;
     const gap =
@@ -800,6 +828,29 @@ export function DmThread({
                             </button>
                             <span className="py-0.5 text-[#949BA4]">
                               Enter to save · Esc to cancel
+                            </span>
+                          </span>
+                        </span>
+                      ) : m.kind === "voice" && m.sending ? (
+                        <span className="block min-w-[220px] max-w-[280px]">
+                          <span className="flex min-w-0 items-center gap-2 py-1" aria-label="Sending voice note">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4E5058] text-white">
+                              <LoaderCircle size={14} className="animate-spin" />
+                            </span>
+                            <span className="flex min-w-0 flex-1 items-end gap-[2px]" aria-hidden>
+                              {(m.attachment?.peaks && m.attachment.peaks.length > 0
+                                ? m.attachment.peaks
+                                : new Array(28).fill(0.4)
+                              ).map((p, i) => (
+                                <span
+                                  key={i}
+                                  style={{ height: `${4 + Math.min(1, Math.max(0, p)) * 20}px` }}
+                                  className="w-full min-w-[2px] rounded-full bg-[#4E5058]"
+                                />
+                              ))}
+                            </span>
+                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-[#949BA4]">
+                              Sending…
                             </span>
                           </span>
                         </span>
