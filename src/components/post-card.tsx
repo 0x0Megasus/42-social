@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Heart, MessageCircle, Pencil, Pin, Trash2, Check, X, ArrowDown, Ellipsis, Share2 } from "lucide-react";
+import { Heart, MessageCircle, Pencil, Pin, Trash2, Check, X, ArrowDown, Ellipsis, Share2, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmojiPicker, kickColor } from "@/components/emoji-picker";
 import { FounderBadge } from "@/components/founder-badge";
@@ -435,6 +435,7 @@ export function PostCard({
   const [pinnedOverride, setPinnedOverride] = useState<boolean | null>(null);
   const [gone, setGone] = useState(false);
   const [confirmDeletePost, setConfirmDeletePost] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentDraft, setEditCommentDraft] = useState("");
@@ -520,6 +521,8 @@ export function PostCard({
   }
 
   async function deletePost() {
+    if (deleting) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -529,6 +532,8 @@ export function PostCard({
       setIsOpen(false);
     } catch {
       toast.error("Delete failed");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -731,57 +736,41 @@ export function PostCard({
                     <Share2 size={13} /> Share post
                   </button>
                   {canDelete ? (
-                    confirmDeletePost ? (
-                      <>
+                    <>
+                      {isMine && (
                         <button
                           role="menuitem"
-                          onClick={deletePost}
-                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                          onClick={() => {
+                            setPostDraft(bodyOverride ?? post.body);
+                            setEditingPost(true);
+                            setPostMenuOpen(false);
+                            setConfirmDeletePost(false);
+                          }}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
                         >
-                          <Check size={13} /> Confirm delete
+                          <Pencil size={13} /> Edit post
                         </button>
+                      )}
+                      {canPin && (
                         <button
                           role="menuitem"
-                          onClick={() => setConfirmDeletePost(false)}
-                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-white/5"
+                          onClick={togglePin}
+                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
                         >
-                          <X size={13} /> Cancel
+                          <Pin size={13} /> {displayPinned ? "Unpin post" : "Pin to top"}
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        {isMine && (
-                          <button
-                            role="menuitem"
-                            onClick={() => {
-                              setPostDraft(bodyOverride ?? post.body);
-                              setEditingPost(true);
-                              setPostMenuOpen(false);
-                              setConfirmDeletePost(false);
-                            }}
-                            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
-                          >
-                            <Pencil size={13} /> Edit post
-                          </button>
-                        )}
-                        {canPin && (
-                          <button
-                            role="menuitem"
-                            onClick={togglePin}
-                            className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-white/5"
-                          >
-                            <Pin size={13} /> {displayPinned ? "Unpin post" : "Pin to top"}
-                          </button>
-                        )}
-                        <button
-                          role="menuitem"
-                          onClick={() => setConfirmDeletePost(true)}
-                          className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                        >
-                          <Trash2 size={13} /> Delete post
-                        </button>
-                      </>
-                    )
+                      )}
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setConfirmDeletePost(true);
+                          setPostMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      >
+                        <Trash2 size={13} /> Delete post
+                      </button>
+                    </>
                   ) : null}
                 </div>
               </>
@@ -789,6 +778,57 @@ export function PostCard({
           </div>
         )}
       </div>
+      {confirmDeletePost && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Confirm delete post"
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setConfirmDeletePost(false);
+          }}
+        >
+          <div
+            aria-hidden
+            onClick={() => setConfirmDeletePost(false)}
+            className="fixed inset-0 bg-black/60"
+          />
+          <div className="relative w-full max-w-xs rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
+              Delete this post?
+            </p>
+            <p className="mt-1 text-[13px] text-zinc-500 dark:text-zinc-400">
+              This can&apos;t be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmDeletePost(false)}
+                disabled={deleting}
+                title="Cancel delete"
+                autoFocus
+                className="flex items-center gap-1 rounded-full border border-zinc-300 bg-transparent px-4 py-1.5 text-[13px] font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                <X size={14} /> Cancel
+              </button>
+              <button
+                onClick={deletePost}
+                disabled={deleting}
+                className="flex items-center gap-1 rounded-full bg-rose-500 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-rose-600 disabled:opacity-70"
+              >
+                {deleting ? (
+                  <>
+                    <LoaderCircle size={14} className="animate-spin" /> Deleting…
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} /> Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {editingPost ? (
         <div className="mt-3">
           <label htmlFor={`edit-post-${post.id}`} className="sr-only">
@@ -1002,16 +1042,17 @@ export function PostCard({
                                   onClick={() => deleteComment(c.id)}
                                   aria-label="Confirm delete"
                                   title="Confirm delete"
-                                  className="rounded-full bg-rose-500 p-1.5 text-white hover:bg-rose-600"
+                                  className="flex items-center gap-0.5 rounded-full bg-rose-500 px-1.5 py-1 text-[11px] font-bold text-white hover:bg-rose-600"
                                 >
-                                  <Check size={12} />
+                                  <Check size={12} /> Delete
                                 </button>
                                 <button
                                   onClick={() => setConfirmDeleteCommentId(null)}
                                   aria-label="Cancel delete"
-                                  className="rounded-full bg-zinc-100 p-1.5 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+                                  title="Cancel delete"
+                                  className="flex items-center gap-0.5 rounded-full bg-zinc-100 px-1.5 py-1 text-[11px] font-bold text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
                                 >
-                                  <X size={12} />
+                                  <X size={12} /> Cancel
                                 </button>
                               </>
                             ) : (
