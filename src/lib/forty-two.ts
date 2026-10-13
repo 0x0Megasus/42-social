@@ -17,7 +17,7 @@ export function fortyTwoAuthorizeUrl(state: string): string {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: "public profile",
+    scope: "public",
     state,
   });
   return `${AUTH_URL}?${p.toString()}`;
