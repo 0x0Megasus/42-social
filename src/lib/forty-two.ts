@@ -2,6 +2,13 @@ const AUTH_URL = "https://api.intra.42.fr/oauth/authorize";
 const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
 const ME_URL = "https://api.intra.42.fr/v2/me";
 
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
 export function get42Config() {
   const strip = (v: string) =>
     v.trim().replace(/^["']|["']$/g, "");
@@ -38,7 +45,10 @@ export async function exchange42Code(code: string): Promise<string> {
   try {
     res = await fetch(TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...BROWSER_HEADERS,
+      },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         client_id: clientId,
@@ -101,7 +111,7 @@ export function isEnrolledStudent(me: FortyTwoMe): boolean {
 
 export async function fetch42Me(accessToken: string): Promise<FortyTwoMe> {
   const res = await fetch(ME_URL, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}`, ...BROWSER_HEADERS },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`42 /v2/me failed: ${res.status}`);
