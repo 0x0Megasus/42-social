@@ -28,8 +28,21 @@ export async function GET(req: Request) {
   }
 
   try {
-    const token = await exchange42Code(code);
-    const me = await fetch42Me(token);
+    let token: string;
+    try {
+      token = await exchange42Code(code);
+    } catch (e) {
+      console.error("[42/callback] token exchange failed:", e);
+      return NextResponse.redirect(`${base}/login?error=oauth_token`);
+    }
+
+    let me;
+    try {
+      me = await fetch42Me(token);
+    } catch (e) {
+      console.error("[42/callback] /v2/me failed:", e);
+      return NextResponse.redirect(`${base}/login?error=oauth_me`);
+    }
 
     if (!isEnrolledStudent(me)) {
       return NextResponse.redirect(`${base}/login?error=not_student`);
@@ -42,14 +55,20 @@ export async function GET(req: Request) {
       60
     );
     const avatar = me.image?.link ?? null;
-    const user = await upsertUserByEmail({
-      email: me.email,
-      name: fullName,
-      login42: me.login,
-      avatar,
-      campus,
-      coalition,
-    });
+    let user;
+    try {
+      user = await upsertUserByEmail({
+        email: me.email,
+        name: fullName,
+        login42: me.login,
+        avatar,
+        campus,
+        coalition,
+      });
+    } catch (e) {
+      console.error("[42/callback] db upsert failed:", e);
+      return NextResponse.redirect(`${base}/login?error=oauth_db`);
+    }
 
     if (isMaintenanceMode() && !isSupportUser(user)) {
       return NextResponse.json(
@@ -58,14 +77,20 @@ export async function GET(req: Request) {
       );
     }
 
-    await setSessionCookie(
-      await createSession({ sub: user.id, email: user.email, name: user.name })
-    );
+    try {
+      await setSessionCookie(
+        await createSession({ sub: user.id, email: user.email, name: user.name })
+      );
+    } catch (e) {
+      console.error("[42/callback] session failed:", e);
+      return NextResponse.redirect(`${base}/login?error=oauth_session`);
+    }
     const res = NextResponse.redirect(`${base}${resume}`);
     res.cookies.delete("oauth_state");
     res.cookies.delete("post_login");
     return res;
-  } catch {
+  } catch (e) {
+    console.error("[42/callback] unexpected:", e);
     return NextResponse.redirect(`${base}/login?error=oauth`);
   }
 }

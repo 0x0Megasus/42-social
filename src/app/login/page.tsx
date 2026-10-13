@@ -64,7 +64,15 @@ export default async function Login({
                 ? "Security check failed. Try again."
                 : error === "not_student"
                   ? "Only enrolled 42 students can join — pisciners get access after admission."
-                  : "Login failed. Try again."}
+                  : error === "oauth_token"
+                    ? "42 token exchange failed (redirect/env). Try again."
+                    : error === "oauth_me"
+                      ? "Could not fetch 42 profile. Try again."
+                      : error === "oauth_db"
+                        ? "Database unavailable. Try again later."
+                        : error === "oauth_session"
+                          ? "Session signing failed (AUTH_SECRET). Try again."
+                          : "Login failed. Try again."}
           </p>
         )}
         <div className="mt-6">
