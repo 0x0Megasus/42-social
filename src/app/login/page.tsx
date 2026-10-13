@@ -9,10 +9,10 @@ import { isSupportUser } from "@/lib/support";
 export default async function Login({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; detail?: string }>;
 }) {
   const session = await getSession();
-  const { error, next } = await searchParams;
+  const { error, next, detail } = await searchParams;
   const isMaintenance = isMaintenanceMode();
   let isSupport = false;
   if (session?.sub) {
@@ -65,7 +65,7 @@ export default async function Login({
                 : error === "not_student"
                   ? "Only enrolled 42 students can join — pisciners get access after admission."
                   : error === "oauth_token"
-                    ? "42 token exchange failed (redirect/env). Try again."
+                    ? `42 token exchange failed${detail ? `: ${detail}` : " (redirect/env)"}. Try again.`
                     : error === "oauth_me"
                       ? "Could not fetch 42 profile. Try again."
                       : error === "oauth_db"

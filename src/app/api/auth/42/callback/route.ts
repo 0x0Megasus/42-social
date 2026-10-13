@@ -33,7 +33,13 @@ export async function GET(req: Request) {
       token = await exchange42Code(code);
     } catch (e) {
       console.error("[42/callback] token exchange failed:", e);
-      return NextResponse.redirect(`${base}/login?error=oauth_token`);
+      // 42 error bodies are safe (error code + description, no secrets).
+      const detail = String((e as Error)?.message ?? e)
+        .replace(/[\r\n]+/g, " ")
+        .slice(0, 160);
+      return NextResponse.redirect(
+        `${base}/login?error=oauth_token&detail=${encodeURIComponent(detail)}`
+      );
     }
 
     let me;
