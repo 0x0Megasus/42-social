@@ -64,7 +64,7 @@ export async function PATCH(req: Request) {
       { error: "limit", retryAfter: lim.retryAfter },
       { status: 429, headers: { "Retry-After": String(lim.retryAfter) } }
     );
-  const { name, bio, socials, cover, spotifyUrl } = (await req.json().catch(
+  const { name, bio, socials, cover, spotifyUrl, avatar } = (await req.json().catch(
     () => ({})
   )) as {
     name?: string;
@@ -72,6 +72,7 @@ export async function PATCH(req: Request) {
     socials?: unknown;
     cover?: string;
     spotifyUrl?: string;
+    avatar?: string | null;
   };
   const cleanName = clean(name, 30);
   const cleanBio = clean(bio, 160);
@@ -99,12 +100,25 @@ export async function PATCH(req: Request) {
   }
   const prev = await readUserById(session.sub);
   if (!prev) return NextResponse.json({ error: "not found" }, { status: 404 });
+  let nextAvatar: string | null | undefined;
+  if (avatar !== undefined) {
+    if (avatar === null || String(avatar).trim() === "") {
+      // null clears a custom photo; the Intra photo returns on next 42 login.
+      nextAvatar = null;
+    } else {
+      const norm = normalizeUrl(String(avatar));
+      if (!norm || norm.length > 500)
+        return NextResponse.json({ error: "invalid-avatar" }, { status: 400 });
+      nextAvatar = norm;
+    }
+  }
   const next = {
     ...prev,
     name: cleanName,
     bio: cleanBio,
     socials: normalized,
     nameLower: cleanName.toLowerCase(),
+    ...(nextAvatar !== undefined ? { avatar: nextAvatar } : null),
     ...(resolvedCover !== undefined
       ? {
           cover: resolvedCover?.image ?? null,
@@ -122,6 +136,9 @@ export async function PATCH(req: Request) {
       [`/users/${hit.key}/bio`]: cleanBio,
       [`/users/${hit.key}/socials`]: normalized,
       [`/users/${hit.key}/nameLower`]: next.nameLower,
+      ...(nextAvatar !== undefined
+        ? { [`/users/${hit.key}/avatar`]: nextAvatar }
+        : null),
       ...(resolvedCover !== undefined
         ? {
             [`/users/${hit.key}/cover`]: resolvedCover?.image ?? null,

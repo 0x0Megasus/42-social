@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImagePlus, LoaderCircle, Music, Pencil, Trash2, Link2 } from "lucide-react";
+import { ImagePlus, LoaderCircle, Music, Pencil, Trash2, Link2, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { graphemeLen } from "@/lib/sanitize";
+import { compressImage, uploadFile } from "@/lib/media";
 import type { UserSpotify } from "@/lib/db";
 
 const PRESETS = ["GitHub", "LinkedIn", "Instagram", "X"] as const;
@@ -14,14 +15,18 @@ function iconFor(_label: string) {
 }
 
 export function EditProfileForm({
+  userId,
   name,
   bio,
+  avatar: initialAvatar = null,
   socials: initialSocials = [],
   cover: initialCover = null,
   spotify: initialSpotify = null,
 }: {
+  userId: string;
   name: string;
   bio: string;
+  avatar?: string | null;
   socials?: { label: string; url: string }[];
   cover?: string | null;
   spotify?: UserSpotify | null;
@@ -29,6 +34,9 @@ export function EditProfileForm({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
   const [draftBio, setDraftBio] = useState(bio);
+  const [draftAvatar, setDraftAvatar] = useState(initialAvatar ?? "");
+  const [avatarTouched, setAvatarTouched] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [draftSocials, setDraftSocials] = useState<{ label: string; url: string }[]>(
     initialSocials
   );
@@ -44,7 +52,24 @@ export function EditProfileForm({
   const [spotError, setSpotError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const avatarFile = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  async function pickAvatar(file: File | undefined) {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const c = await compressImage(file);
+      const up = await uploadFile("posts", userId, c.blob);
+      setDraftAvatar(up.url);
+      setAvatarTouched(true);
+      toast.success("Photo ready — hit Save");
+    } catch {
+      toast.error("Couldn't upload that image.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   function addSocial(preset: string) {
     const exists = draftSocials.some((s) => s.label.toLowerCase() === preset.toLowerCase());
@@ -119,6 +144,9 @@ export function EditProfileForm({
         body: JSON.stringify({
           name: draftName.trim(),
           bio: draftBio.trim(),
+          ...(avatarTouched
+            ? { avatar: draftAvatar.trim() ? draftAvatar.trim() : null }
+            : null),
           socials: draftSocials,
           cover: draftCover.trim(),
           spotifyUrl: draftSpotifyUrl.trim(),
@@ -137,7 +165,9 @@ export function EditProfileForm({
               ? "That cover link doesn't work — use a direct .gif link or a Pinterest pin link."
               : d?.error === "invalid-spotify"
                 ? "That Spotify link isn't a song or artist."
-                : (d?.error ?? "Couldn't save.")
+                : d?.error === "invalid-avatar"
+                  ? "That photo link doesn't work — upload a file or paste a direct https image link."
+                  : (d?.error ?? "Couldn't save.")
         );
         return;
       }
@@ -165,6 +195,8 @@ export function EditProfileForm({
         onClick={() => {
           setDraftName(name);
           setDraftBio(bio);
+          setDraftAvatar(initialAvatar ?? "");
+          setAvatarTouched(false);
           setDraftSocials(initialSocials);
           setDraftCover(initialCover ?? "");
           setDraftSpotifyUrl(initialSpotify?.url ?? "");
@@ -181,6 +213,64 @@ export function EditProfileForm({
 
   return (
     <form onSubmit={save} className="mx-auto mt-4 max-w-xs space-y-3 text-left">
+      <div>
+        <span className="flex items-center gap-1 text-xs font-semibold text-zinc-500">
+          <Camera size={12} /> Profile photo
+        </span>
+        <div className="mt-2 flex items-center gap-3">
+          {draftAvatar.trim() ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={draftAvatar.trim()}
+              src={draftAvatar.trim()}
+              alt="Profile preview"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+              className="h-14 w-14 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#18181B] text-zinc-400">
+              <Camera size={18} />
+            </span>
+          )}
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <input
+              ref={avatarFile}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                void pickAvatar(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => avatarFile.current?.click()}
+              disabled={uploadingAvatar}
+              className="w-full rounded-[2px] border border-[#3F3F46] px-3 py-1.5 text-[13px] font-semibold text-[#E4E4E7] hover:bg-[#18181B] disabled:opacity-50"
+            >
+              {uploadingAvatar ? "Uploading…" : "Upload photo"}
+            </button>
+            {draftAvatar.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftAvatar("");
+                  setAvatarTouched(true);
+                }}
+                className="w-full rounded-[2px] px-3 py-1 text-[12px] font-semibold text-zinc-400 hover:text-[#F4F4F5]"
+              >
+                Remove custom photo
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Custom photo sticks — Intra photo returns on next login after removal.
+        </p>
+      </div>
       <div>
         <label htmlFor="edit-name" className="text-xs font-semibold text-zinc-500">
           Nickname

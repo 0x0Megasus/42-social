@@ -715,7 +715,9 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
         existing.name = input.name;
         dirty = true;
       }
-      if (input.avatar && existing.avatar !== input.avatar) {
+      // Custom avatars win: only fill from Intra when the user has none,
+      // so a manually set profile picture survives re-login.
+      if (input.avatar && !existing.avatar) {
         existing.avatar = input.avatar;
         dirty = true;
       }

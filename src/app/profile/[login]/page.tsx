@@ -141,8 +141,10 @@ export default async function Profile({
           <>
             <div className="flex justify-center">
               <EditProfileForm
+                userId={user.id}
                 name={pub.name}
                 bio={pub.bio}
+                avatar={pub.avatar}
                 socials={pub.socials}
                 cover={pub.cover}
                 spotify={pub.spotify}
