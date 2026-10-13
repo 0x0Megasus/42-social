@@ -455,7 +455,6 @@ export function EditProfileForm({
           })}
         </div>
         <p className="mt-1 flex justify-between text-[11px] text-zinc-500">
-          <span>One per platform, max 4. Paste full URL.</span>
           <span>{draftSocials.length}/4</span>
         </p>
       </div>
