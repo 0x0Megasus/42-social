@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exchange42Code, fetch42Me, isEnrolledStudent } from "@/lib/forty-two";
+import { exchange42Code, fetch42Me, isPooler } from "@/lib/forty-two";
 import { upsertUserByEmail } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       return NextResponse.redirect(`${base}/login?error=oauth_me`);
     }
 
-    if (!isEnrolledStudent(me)) {
+    if (isPooler(me)) {
       return NextResponse.redirect(`${base}/login?error=not_student`);
     }
 

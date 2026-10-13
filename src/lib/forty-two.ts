@@ -96,17 +96,24 @@ export type FortyTwoMe = {
   }[];
 };
 
-// 42 Cursus id is 21, slug "42cursus". Pisciners only have the Piscine
-// cursus (id 9). With `public` scope /v2/me includes cursus_users.
-export function isEnrolledStudent(me: FortyTwoMe): boolean {
-  if (me.staff) return false;
-  if (me.active === false) return false;
+// A pooler (pisciner) has no 42 Cursus enrollment: only the Piscine cursus
+// and/or a pool_month/pool_year. Everyone else (students, alumni, staff)
+// is allowed in. With `public` scope /v2/me includes cursus_users.
+export function isPooler(me: FortyTwoMe): boolean {
   const cursus = me.cursus_users;
-  // Fail open if API stops returning the field — don't lock out everyone.
-  if (!Array.isArray(cursus)) return true;
-  return cursus.some(
+  // Fail open if the API stops returning the field.
+  if (!Array.isArray(cursus) || cursus.length === 0) return false;
+  const has42 = cursus.some(
     (c) => c?.cursus?.id === 21 || c?.cursus?.slug === "42cursus"
   );
+  if (has42) return false;
+  const hasPiscine = cursus.some(
+    (c) =>
+      c?.cursus?.id === 9 ||
+      String(c?.cursus?.slug ?? "").toLowerCase().includes("piscine")
+  );
+  const hasPool = Boolean(me.pool_month || me.pool_year);
+  return hasPiscine || hasPool;
 }
 
 export async function fetch42Me(accessToken: string): Promise<FortyTwoMe> {
