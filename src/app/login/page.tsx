@@ -19,7 +19,7 @@ export default async function Login({
     const user = await cachedUserById(session.sub);
     isSupport = isSupportUser(user);
   }
-  if (session && isSupport) redirect(safeNext(next));
+  if (session && (!isMaintenance || isSupport)) redirect(safeNext(next));
 
   return (
     <section className="mx-auto mt-10 max-w-sm">

@@ -3,12 +3,17 @@ const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
 const ME_URL = "https://api.intra.42.fr/v2/me";
 
 export function get42Config() {
-  const clientId = (process.env.FORTY_TWO_UID ?? "").trim();
-  const clientSecret = (process.env.FORTY_TWO_SECRET ?? "").trim();
-  const redirectUri = (
+  const strip = (v: string) =>
+    v.trim().replace(/^["']|["']$/g, "");
+  const clientId = strip(process.env.FORTY_TWO_UID ?? "");
+  const clientSecret = strip(process.env.FORTY_TWO_SECRET ?? "").replace(
+    /\s+/g,
+    ""
+  );
+  const redirectUri = strip(
     process.env.FORTY_TWO_REDIRECT ??
-    "http://localhost:3000/api/auth/42/callback"
-  ).trim().replace(/\/$/, "");
+      "http://localhost:3000/api/auth/42/callback"
+  ).replace(/\/$/, "");
   return { clientId, clientSecret, redirectUri };
 }
 
