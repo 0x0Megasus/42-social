@@ -51,7 +51,31 @@ export type FortyTwoMe = {
   image: { link: string | null };
   campus?: { name: string }[];
   coalitions?: { name: string; slug: string }[];
+  staff?: boolean;
+  active?: boolean;
+  alumni?: boolean;
+  kind?: string;
+  pool_month?: string | null;
+  pool_year?: string | null;
+  cursus_users?: {
+    grade: string | null;
+    end_at: string | null;
+    cursus: { id: number; slug: string };
+  }[];
 };
+
+// 42 Cursus id is 21, slug "42cursus". Pisciners only have the Piscine
+// cursus (id 9). With `public` scope /v2/me includes cursus_users.
+export function isEnrolledStudent(me: FortyTwoMe): boolean {
+  if (me.staff) return false;
+  if (me.active === false) return false;
+  const cursus = me.cursus_users;
+  // Fail open if API stops returning the field — don't lock out everyone.
+  if (!Array.isArray(cursus)) return true;
+  return cursus.some(
+    (c) => c?.cursus?.id === 21 || c?.cursus?.slug === "42cursus"
+  );
+}
 
 export async function fetch42Me(accessToken: string): Promise<FortyTwoMe> {
   const res = await fetch(ME_URL, {

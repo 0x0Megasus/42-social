@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exchange42Code, fetch42Me } from "@/lib/forty-two";
+import { exchange42Code, fetch42Me, isEnrolledStudent } from "@/lib/forty-two";
 import { upsertUserByEmail } from "@/lib/db";
 import { createSession, setSessionCookie } from "@/lib/session";
 import { safeNext } from "@/lib/redirect";
@@ -30,6 +30,10 @@ export async function GET(req: Request) {
   try {
     const token = await exchange42Code(code);
     const me = await fetch42Me(token);
+
+    if (!isEnrolledStudent(me)) {
+      return NextResponse.redirect(`${base}/login?error=not_student`);
+    }
 
     const campus = me.campus?.[0]?.name ?? null;
     const coalition = me.coalitions?.[0]?.name ?? null;

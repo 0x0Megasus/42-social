@@ -62,7 +62,9 @@ export default async function Login({
               ? "Authorization was cancelled."
               : error === "state"
                 ? "Security check failed. Try again."
-                : "Login failed. Try again."}
+                : error === "not_student"
+                  ? "Only enrolled 42 students can join — pisciners get access after admission."
+                  : "Login failed. Try again."}
           </p>
         )}
         <div className="mt-6">
