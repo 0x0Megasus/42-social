@@ -143,6 +143,7 @@ export default async function Profile({
               <EditProfileForm
                 name={pub.name}
                 bio={pub.bio}
+                socials={pub.socials}
                 cover={pub.cover}
                 spotify={pub.spotify}
               />

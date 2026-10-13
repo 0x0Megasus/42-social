@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -61,36 +61,17 @@ export function FollowButton({
 }
 
 export function AuthButtons() {
-  const [busy, setBusy] = useState<"42" | null>(null);
-  const [config, setConfig] = useState<{
-    fortyTwo: boolean;
-  } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/config")
-      .then((r) => r.json())
-      .then((d) => setConfig({ fortyTwo: d?.fortyTwo !== false }))
-      .catch(() => setConfig({ fortyTwo: false }));
-  }, []);
+  const [busy, setBusy] = useState(false);
 
   return (
     <div className="space-y-3">
-      {config && !config.fortyTwo && (
-        <p
-          role="alert"
-          className="rounded-xl bg-amber-50 px-3 py-2 text-center text-[13px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
-        >
-          42 login isn&apos;t set up on this server yet — add FORTY_TWO_UID /
-          FORTY_TWO_SECRET to .env.local.
-        </p>
-      )}
       <a
         href="/api/auth/42"
-        onClick={() => setBusy("42")}
-        aria-disabled={busy !== null || config?.fortyTwo === false}
-        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FAFAFA] text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] transition-opacity disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+        onClick={() => setBusy(true)}
+        aria-disabled={busy}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FAFAFA] text-[14px] font-semibold text-[#18181B] hover:bg-[#E4E4E7] transition-opacity aria-disabled:pointer-events-none aria-disabled:opacity-50"
       >
-        {busy === "42" ? "Redirecting…" : "Continue with 42 Intra"}
+        {busy ? "Redirecting…" : "Continue with 42 Intra"}
       </a>
     </div>
   );
