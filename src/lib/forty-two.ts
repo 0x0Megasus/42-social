@@ -3,11 +3,12 @@ const TOKEN_URL = "https://api.intra.42.fr/oauth/token";
 const ME_URL = "https://api.intra.42.fr/v2/me";
 
 export function get42Config() {
-  const clientId = process.env.FORTY_TWO_UID ?? "";
-  const clientSecret = process.env.FORTY_TWO_SECRET ?? "";
-  const redirectUri =
+  const clientId = (process.env.FORTY_TWO_UID ?? "").trim();
+  const clientSecret = (process.env.FORTY_TWO_SECRET ?? "").trim();
+  const redirectUri = (
     process.env.FORTY_TWO_REDIRECT ??
-    "http://localhost:3000/api/auth/42/callback";
+    "http://localhost:3000/api/auth/42/callback"
+  ).trim().replace(/\/$/, "");
   return { clientId, clientSecret, redirectUri };
 }
 
@@ -25,20 +26,36 @@ export function fortyTwoAuthorizeUrl(state: string): string {
 
 export async function exchange42Code(code: string): Promise<string> {
   const { clientId, clientSecret, redirectUri } = get42Config();
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-    }),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`42 token exchange failed: ${res.status}`);
+  if (!clientId || !clientSecret) {
+    throw new Error("42 env missing (FORTY_TWO_UID/SECRET)");
+  }
+  let res: Response;
+  try {
+    res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+      cache: "no-store",
+    });
+  } catch (e) {
+    throw new Error(
+      `42 token fetch failed: ${(e as Error)?.message ?? e}`
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `42 token exchange failed: ${res.status} ${body.slice(0, 300)} | redirect=${redirectUri} | uid=${clientId.slice(0, 12)}…`
+    );
+  }
   const data = (await res.json()) as { access_token: string };
+  if (!data.access_token) throw new Error("42 token missing access_token");
   return data.access_token;
 }
 
