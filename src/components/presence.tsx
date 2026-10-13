@@ -57,6 +57,7 @@ export function usePresence(userId: string | null | undefined): Presence | null 
 export function PresenceHeartbeat() {
   useEffect(() => {
     let alive = true;
+    let t: ReturnType<typeof setInterval> | null = null;
     const KEY = "dm-tabs-open";
     const bump = (delta: number) => {
       try {
@@ -71,11 +72,28 @@ export function PresenceHeartbeat() {
       }
     };
     bump(1);
-    const beat = () => {
-      if (alive) fetch("/api/presence", { method: "POST" }).catch(() => null);
+    const beat = async () => {
+      if (!alive) return;
+      try {
+        const res = await fetch("/api/presence", { method: "POST" });
+        // Logged out — stop beating until next full page load (login reloads).
+        if (res.status === 401 && t !== null) {
+          clearInterval(t);
+          t = null;
+        }
+      } catch {
+      }
     };
-    beat();
-    const t = setInterval(beat, 20_000);
+    // Don't heartbeat at all when logged out (avoids 401 noise on /login).
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (!d?.user) return;
+        void beat();
+        t = setInterval(beat, 20_000);
+      })
+      .catch(() => null);
     const onHide = () => {
       if (bump(-1) === 0) {
         try {
@@ -87,7 +105,7 @@ export function PresenceHeartbeat() {
     window.addEventListener("pagehide", onHide);
     return () => {
       alive = false;
-      clearInterval(t);
+      if (t !== null) clearInterval(t);
       window.removeEventListener("pagehide", onHide);
     };
   }, []);
