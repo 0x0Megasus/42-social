@@ -42,7 +42,7 @@ function ClockChip({
     return (
       <span
         aria-hidden
-        className="rounded-lg bg-black/40 px-2.5 py-1 font-mono text-[15px] font-bold tabular-nums text-stone-600 shadow-sm ring-1 ring-inset ring-white/10"
+        className="rounded-lg bg-black/40 px-2.5 py-1 font-mono text-[15px] font-bold tabular-nums text-stone-300 shadow-sm ring-1 ring-inset ring-white/10"
       >
         {side === "w" ? "♔ " : "♚ "}
         –:––
@@ -276,15 +276,15 @@ export function ChessBoardView({
           active={turn === oppSide && board.history.length > 0}
         />
         <div className="flex h-6 min-w-0 flex-1 items-center gap-1 text-lg leading-none">
-          {capturedBy(board.fen, myColor === "b" ? "b" : "w").map((t, i) => (
+          {capturedBy(board.fen, oppSide).map((t, i) => (
             <span
               key={i}
               className="-ml-2 text-stone-300 first:ml-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
             >
-              {GLYPHS[myColor === "b" ? "b" : "w"][t]}
+              {GLYPHS[mySide][t]}
             </span>
           ))}
-          {myColor && diff !== 0 && (myColor === "w" ? diff > 0 : diff < 0) && (
+          {(oppSide === "w" ? diff > 0 : diff < 0) && (
             <span className="ml-1 text-xs font-bold text-amber-300/90">
               +{Math.abs(diff)}
             </span>
@@ -447,15 +447,15 @@ export function ChessBoardView({
           active={turn === mySide && board.history.length > 0}
         />
         <div className="flex h-6 min-w-0 flex-1 items-center gap-1 text-lg leading-none">
-          {capturedBy(board.fen, myColor === "b" ? "w" : "b").map((t, i) => (
+          {capturedBy(board.fen, mySide).map((t, i) => (
             <span
               key={i}
               className="-ml-2 text-stone-300 first:ml-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]"
             >
-              {GLYPHS[myColor === "b" ? "w" : "b"][t]}
+              {GLYPHS[oppSide][t]}
             </span>
           ))}
-          {myColor && diff !== 0 && (myColor === "b" ? diff > 0 : diff < 0) && (
+          {(mySide === "w" ? diff > 0 : diff < 0) && (
             <span className="ml-1 text-xs font-bold text-amber-300/90">
               +{Math.abs(diff)}
             </span>
