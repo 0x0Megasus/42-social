@@ -41,7 +41,7 @@ export default async function Login({
             <p className="mt-2 text-center text-[14px] leading-6 text-zinc-500">
               For 42 / 1337 students.
               <br />
-              Sign in with Google to join.
+              Sign in with 42 Intra to join.
             </p>
             <p className="mt-3 text-center text-[12px] leading-5 text-zinc-400">
               A project by a 1337 student — not an official 42 or 1337 app.

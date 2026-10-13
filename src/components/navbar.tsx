@@ -167,11 +167,6 @@ export function Navbar() {
               <a
                 href="/api/auth/logout"
                 aria-label="Log out"
-                onClick={() => {
-                  void import("@/lib/firebase-client").then((m) =>
-                    m.signOutFirebase().catch(() => null)
-                  );
-                }}
                 className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
               >
                 <LogOut size={19} strokeWidth={2} />

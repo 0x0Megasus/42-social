@@ -19,7 +19,6 @@ export type User = {
   email: string;
   name: string;
   login42: string | null;
-  googleId: string | null;
   avatar: string | null;
   campus: string | null;
   coalition: string | null;
@@ -182,7 +181,8 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 export function normalizeUser(u: User): User {
   if (!("lastSeen" in u)) (u as User).lastSeen = null;
   if ((u as User).login42 === undefined) (u as User).login42 = null;
-  if ((u as User).googleId === undefined) (u as User).googleId = null;
+  // drop legacy Google field from pre-42-only accounts
+  delete (u as unknown as Record<string, unknown>).googleId;
   if ((u as User).avatar === undefined) (u as User).avatar = null;
   if ((u as User).campus === undefined) (u as User).campus = null;
   if ((u as User).coalition === undefined) (u as User).coalition = null;
@@ -699,7 +699,6 @@ export type UserUpsert = {
   email: string;
   name: string;
   login42: string | null;
-  googleId: string | null;
   avatar: string | null;
   campus: string | null;
   coalition: string | null;
@@ -712,10 +711,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
     const existing = await readUserById(pointed);
     if (existing) {
       let dirty = false;
-      if (input.googleId && !existing.googleId) {
-        existing.googleId = input.googleId;
-        dirty = true;
-      }
       if (!existing.name && input.name) {
         existing.name = input.name;
         dirty = true;
@@ -773,7 +768,6 @@ export async function upsertUserByEmail(input: UserUpsert): Promise<User> {
     email: input.email,
     name: input.name,
     login42: input.login42,
-    googleId: input.googleId,
     avatar: input.avatar,
     campus: input.campus,
     coalition: input.coalition,

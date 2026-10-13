@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { fortyTwoAuthorizeUrl } from "@/lib/forty-two";
 
 function rand(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try {
+    return crypto.randomUUID().replace(/-/g, "") + Date.now().toString(36);
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
 }
 
 export async function GET() {
@@ -18,6 +22,7 @@ export async function GET() {
   res.cookies.set("oauth_state", state, {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 600,
   });

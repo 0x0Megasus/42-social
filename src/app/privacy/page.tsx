@@ -38,12 +38,8 @@ export default function Privacy() {
 
       <Section title="1. Account data">
         <p>
-          When you sign in with Google (via Firebase Authentication) the app
-          receives your name, email address and profile picture. When you
-          sign in with 42 Intra it additionally receives your 42 login,
-          campus and coalition. Signing in with both methods on the same
-          email links them to a single profile — nothing is shared between
-          providers beyond matching that email.
+          When you sign in with 42 Intra the app receives your name, email
+          address, profile picture, 42 login, campus and coalition.
         </p>
       </Section>
 
@@ -69,8 +65,8 @@ export default function Privacy() {
           after 7 days — JavaScript on the page can never read it. Your
           sound preference is kept in your own browser (localStorage), never
           sent anywhere. The app makes no advertising or analytics calls and
-          embeds no third-party trackers; the only external requests are to
-          Google/Firebase for login and to 42 Intra when you use 42 login.
+          embeds no third-party trackers; the only external request for login
+          is to 42 Intra.
         </p>
       </Section>
 

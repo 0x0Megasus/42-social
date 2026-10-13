@@ -35,9 +35,9 @@ export default function About() {
         </h1>
         <p className="mt-2 text-[14px] leading-6 text-zinc-600 dark:text-zinc-300">
           {SITE.name} is a minimal, fast campus network for 42 and 1337
-          students. One account, two ways in — Google or 42 Intra (same
-          email, same profile) — then a feed, DMs, and a game arcade shared
-          with your peers. No ads, no tracking scripts, no noise.
+          students. One account, one way in — 42 Intra — then a feed, DMs,
+          and a game arcade shared with your peers. No ads, no tracking
+          scripts, no noise.
         </p>
         <p className="mt-2 text-[14px] leading-6 text-zinc-600 dark:text-zinc-300">
           Built and maintained by{" "}
@@ -49,8 +49,8 @@ export default function About() {
           >
             {SITE.ownerName}
           </a>
-          , 42 student, with Next.js, Tailwind CSS and Firebase (Auth +
-          Realtime Database hosted in the EU).
+          , 42 student, with Next.js, Tailwind CSS and Firebase Realtime
+          Database hosted in the EU).
         </p>
       </section>
 

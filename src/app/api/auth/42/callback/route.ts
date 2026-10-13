@@ -42,7 +42,6 @@ export async function GET(req: Request) {
       email: me.email,
       name: fullName,
       login42: me.login,
-      googleId: null,
       avatar,
       campus,
       coalition,

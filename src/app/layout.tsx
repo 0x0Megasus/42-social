@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     template: "%s · 42·social",
   },
   description:
-    "Minimal social network for 42 / 1337 students. Sign in with Google or 42 Intra.",
+    "Minimal social network for 42 / 1337 students. Sign in with 42 Intra.",
   applicationName: "42·social",
   appleWebApp: { capable: true, title: "42·social", statusBarStyle: "black" },
   openGraph: {
@@ -30,13 +30,13 @@ export const metadata: Metadata = {
     siteName: "42·social",
     title: "42·social — campus network for 42 students",
     description:
-      "Minimal social network for 42 / 1337 students. Sign in with Google or 42 Intra.",
+      "Minimal social network for 42 / 1337 students. Sign in with 42 Intra.",
   },
   twitter: {
     card: "summary",
     title: "42·social — campus network for 42 students",
     description:
-      "Minimal social network for 42 / 1337 students. Sign in with Google or 42 Intra.",
+      "Minimal social network for 42 / 1337 students. Sign in with 42 Intra.",
   },
   robots: { index: false, follow: false },
 };
